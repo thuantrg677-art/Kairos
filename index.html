@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi" data-theme="tan-rung">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Kairos</title>
+    <meta name="description" content="Kairos – tập trung vào 20% việc tạo ra 80% kết quả. Quản lý mục tiêu 12 tuần, thời gian và thói quen." />
+    <meta name="theme-color" content="#F2F7EB" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Kairos" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <script>
+      // Áp theme đã lưu thật sớm để không bị nháy màu khi mở app
+      try {
+        var t = localStorage.getItem('kairos-theme');
+        var d = localStorage.getItem('kairos-dark');
+        if (t) document.documentElement.dataset.theme = t;
+        var dark = d === 'dark' || ((!d || d === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

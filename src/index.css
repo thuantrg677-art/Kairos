@@ -1,0 +1,524 @@
+@import '@fontsource/be-vietnam-pro/vietnamese-400.css';
+@import '@fontsource/be-vietnam-pro/vietnamese-500.css';
+@import '@fontsource/be-vietnam-pro/vietnamese-600.css';
+@import '@fontsource/be-vietnam-pro/vietnamese-700.css';
+@import '@fontsource/be-vietnam-pro/latin-400.css';
+@import '@fontsource/be-vietnam-pro/latin-500.css';
+@import '@fontsource/be-vietnam-pro/latin-600.css';
+@import '@fontsource/be-vietnam-pro/latin-700.css';
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Nối biến màu của theme vào Tailwind: dùng được bg-surface, text-ink, border-line… */
+@theme inline {
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-bg: var(--k-bg);
+  --color-surface: var(--k-surface);
+  --color-surface2: var(--k-surface-2);
+  --color-ink: var(--k-ink);
+  --color-muted: var(--k-muted);
+  --color-line: var(--k-line);
+  --color-primary: var(--k-primary);
+  --color-onprimary: var(--k-on-primary);
+  --color-soft: var(--k-primary-soft);
+  --color-accent: var(--k-accent);
+  --color-high: var(--k-high);
+  --color-highsoft: var(--k-high-soft);
+  --color-danger: var(--k-danger);
+  --color-water: var(--k-water);
+  --color-onsky: var(--k-on-sky);
+  --color-onaccent: var(--k-on-accent);
+}
+
+/* ============================================================
+   6 THEME. Mỗi theme là một bộ biến màu; đổi theme = đổi data-theme trên <html>.
+   Bản tối: thêm class "dark" trên <html>.
+   ============================================================ */
+
+/* Màu dùng chung cho mọi theme */
+:root {
+  --k-high: #8a5600;
+  --k-high-soft: #fdefc8;
+  --k-on-accent: #ffffff;
+  --k-danger: #b93226;
+  --k-water: #2f9ad6;
+  --k-petal: #ffffff;
+  --k-petal-shade: #f1e6bd;
+  --k-bloom: #f3a1bd;
+  --k-bloom-2: #e2709a;
+  --k-pollen: #f4c23d;
+  --k-soil: #7a5a3c;
+  --k-soil-2: #5f452d;
+  --k-pond: #8cc9e8;
+  --k-grain-opacity: 0.2;
+  --k-grain-blend: multiply;
+  --k-on-sky: var(--k-ink);
+}
+.dark {
+  --k-high: #f6cb6a;
+  --k-high-soft: #40331a;
+  --k-on-accent: #1a1a1a;
+  --k-danger: #ff8a7a;
+  --k-water: #6ec1f0;
+  --k-petal: #f4f4ee;
+  --k-petal-shade: #d9cfa6;
+  --k-soil: #6a4e36;
+  --k-soil-2: #4a3626;
+  --k-pond: #3f7fa3;
+  --k-grain-opacity: 0.28;
+  --k-grain-blend: soft-light;
+}
+
+/* 1. Tán rừng (mặc định): xanh lá chanh, trời xanh nhạt, viền kem */
+:root,
+[data-theme='tan-rung'] {
+  --k-bg: #f2f7e6;
+  --k-surface: #fffef6;
+  --k-surface-2: #e6f0cf;
+  --k-ink: #173d27;
+  --k-muted: #4f6b55;
+  --k-line: #d3e1b8;
+  --k-primary: #2a7438;
+  --k-on-primary: #ffffff;
+  --k-primary-soft: #d9ecb9;
+  --k-accent: #bd4e17;
+  --k-sky-1: #8fcfe6;
+  --k-sky-2: #d7eff3;
+  --k-hill-1: #c2e25a;
+  --k-hill-2: #86c440;
+  --k-hill-3: #3d8b3a;
+  --k-leaf-1: #b9df57;
+  --k-leaf-2: #7dbb3c;
+  --k-leaf-3: #2f6f35;
+  --k-trunk: #5f4630;
+}
+[data-theme='tan-rung'].dark {
+  --k-bg: #0e1d15;
+  --k-surface: #16291d;
+  --k-surface-2: #1f3827;
+  --k-ink: #eaf4dc;
+  --k-muted: #a3bca5;
+  --k-line: #2c4a36;
+  --k-primary: #a3d65c;
+  --k-on-primary: #10240f;
+  --k-primary-soft: #26442b;
+  --k-accent: #f39a5f;
+  --k-sky-1: #0f2e3a;
+  --k-sky-2: #1d4a45;
+  --k-hill-1: #4c8f3a;
+  --k-hill-2: #2f6b33;
+  --k-hill-3: #1a4526;
+  --k-leaf-1: #a3d65c;
+  --k-leaf-2: #5fa23c;
+  --k-leaf-3: #2a6331;
+  --k-trunk: #8a6a4c;
+}
+
+/* 2. Đỉnh tuyết: xanh lam đậm → xanh trời, trắng tuyết, chấm đỏ cam */
+[data-theme='dinh-tuyet'] {
+  --k-on-sky: #ffffff;
+  --k-bg: #edf3f9;
+  --k-surface: #ffffff;
+  --k-surface-2: #dbe8f4;
+  --k-ink: #11304f;
+  --k-muted: #4c6884;
+  --k-line: #c8d9ea;
+  --k-primary: #1c5c9a;
+  --k-on-primary: #ffffff;
+  --k-primary-soft: #d5e5f4;
+  --k-accent: #c43a13;
+  --k-sky-1: #2c78b8;
+  --k-sky-2: #8ec4ea;
+  --k-hill-1: #ffffff;
+  --k-hill-2: #c5d9ec;
+  --k-hill-3: #5d8fbd;
+  --k-leaf-1: #9fd07a;
+  --k-leaf-2: #559f5f;
+  --k-leaf-3: #2b6a4a;
+  --k-trunk: #5a493c;
+}
+[data-theme='dinh-tuyet'].dark {
+  --k-on-sky: #e6f0fa;
+  --k-bg: #0a1828;
+  --k-surface: #11243a;
+  --k-surface-2: #19324e;
+  --k-ink: #e6f0fa;
+  --k-muted: #9bb2c9;
+  --k-line: #24405e;
+  --k-primary: #82bcf0;
+  --k-on-primary: #0a1828;
+  --k-primary-soft: #1b3a5a;
+  --k-accent: #ff7d57;
+  --k-sky-1: #0c2644;
+  --k-sky-2: #1e4e80;
+  --k-hill-1: #dce8f5;
+  --k-hill-2: #8caccb;
+  --k-hill-3: #33587f;
+  --k-leaf-1: #8fc971;
+  --k-leaf-2: #4c9358;
+  --k-leaf-3: #2a6247;
+  --k-trunk: #8b7462;
+}
+
+/* 3. Linh lan: xanh lam dịu (periwinkle), trắng, xanh lá */
+[data-theme='linh-lan'] {
+  --k-bg: #eef1fc;
+  --k-surface: #ffffff;
+  --k-surface-2: #dee4f8;
+  --k-ink: #252f6a;
+  --k-muted: #565f93;
+  --k-line: #ccd4f1;
+  --k-primary: #4355b5;
+  --k-on-primary: #ffffff;
+  --k-primary-soft: #dbe1fa;
+  --k-accent: #227344;
+  --k-sky-1: #8ea8ee;
+  --k-sky-2: #c6d3f8;
+  --k-hill-1: #ffffff;
+  --k-hill-2: #b3c4f5;
+  --k-hill-3: #8aa4ea;
+  --k-leaf-1: #a3d573;
+  --k-leaf-2: #43a561;
+  --k-leaf-3: #2b6d49;
+  --k-trunk: #5b4d5e;
+}
+[data-theme='linh-lan'].dark {
+  --k-bg: #131732;
+  --k-surface: #1c2145;
+  --k-surface-2: #272e5b;
+  --k-ink: #e9ecfb;
+  --k-muted: #a8b0d9;
+  --k-line: #343c71;
+  --k-primary: #adbbf6;
+  --k-on-primary: #131732;
+  --k-primary-soft: #2b3368;
+  --k-accent: #7dd39b;
+  --k-sky-1: #1c2355;
+  --k-sky-2: #3a4699;
+  --k-hill-1: #e4e9fb;
+  --k-hill-2: #6676c8;
+  --k-hill-3: #3e4a96;
+  --k-leaf-1: #93cc6c;
+  --k-leaf-2: #3f965a;
+  --k-leaf-3: #2a6244;
+  --k-trunk: #8c7c90;
+}
+
+/* 4. Giấy kem: nền kem ấm, xanh lá, nâu gỗ */
+[data-theme='giay-kem'] {
+  --k-bg: #f2ecdc;
+  --k-surface: #fbf7ec;
+  --k-surface-2: #e8dfc7;
+  --k-ink: #3a2e21;
+  --k-muted: #6f604c;
+  --k-line: #dbd0b5;
+  --k-primary: #386a2e;
+  --k-on-primary: #ffffff;
+  --k-primary-soft: #dce7c2;
+  --k-accent: #8a5a36;
+  --k-sky-1: #e9e0c8;
+  --k-sky-2: #f4eedf;
+  --k-hill-1: #a9c66c;
+  --k-hill-2: #7ea74f;
+  --k-hill-3: #5a8a3a;
+  --k-leaf-1: #9cc264;
+  --k-leaf-2: #6fa043;
+  --k-leaf-3: #4b7e30;
+  --k-trunk: #6b4a33;
+}
+[data-theme='giay-kem'].dark {
+  --k-bg: #211b14;
+  --k-surface: #2c251c;
+  --k-surface-2: #3a3126;
+  --k-ink: #f1e8d6;
+  --k-muted: #baab92;
+  --k-line: #4b4032;
+  --k-primary: #a9cc73;
+  --k-on-primary: #1c2811;
+  --k-primary-soft: #36422a;
+  --k-accent: #d39a6a;
+  --k-sky-1: #2c251c;
+  --k-sky-2: #3a3126;
+  --k-hill-1: #7fa550;
+  --k-hill-2: #5d8440;
+  --k-hill-3: #3f6230;
+  --k-leaf-1: #9cc264;
+  --k-leaf-2: #6c9a44;
+  --k-leaf-3: #476f31;
+  --k-trunk: #9a7352;
+}
+
+/* 5. Trắng đen cơ bản */
+[data-theme='trang-den'] {
+  --k-bg: #f7f7f7;
+  --k-surface: #ffffff;
+  --k-surface-2: #ededed;
+  --k-ink: #111111;
+  --k-muted: #575757;
+  --k-line: #dcdcdc;
+  --k-primary: #111111;
+  --k-on-primary: #ffffff;
+  --k-primary-soft: #e6e6e6;
+  --k-accent: #111111;
+  --k-high: #111111;
+  --k-high-soft: #e3e3e3;
+  --k-water: #444444;
+  --k-sky-1: #e9e9e9;
+  --k-sky-2: #f7f7f7;
+  --k-hill-1: #d6d6d6;
+  --k-hill-2: #b0b0b0;
+  --k-hill-3: #7d7d7d;
+  --k-leaf-1: #cfcfcf;
+  --k-leaf-2: #8d8d8d;
+  --k-leaf-3: #3c3c3c;
+  --k-trunk: #222222;
+  --k-petal: #ffffff;
+  --k-petal-shade: #d9d9d9;
+  --k-bloom: #bdbdbd;
+  --k-bloom-2: #6f6f6f;
+  --k-pollen: #2b2b2b;
+  --k-soil: #4a4a4a;
+  --k-soil-2: #2e2e2e;
+  --k-pond: #cfcfcf;
+}
+[data-theme='trang-den'].dark {
+  --k-bg: #0b0b0b;
+  --k-surface: #161616;
+  --k-surface-2: #232323;
+  --k-ink: #f2f2f2;
+  --k-muted: #a6a6a6;
+  --k-line: #353535;
+  --k-primary: #f2f2f2;
+  --k-on-primary: #111111;
+  --k-primary-soft: #2c2c2c;
+  --k-accent: #f2f2f2;
+  --k-high: #ffffff;
+  --k-high-soft: #333333;
+  --k-water: #cfcfcf;
+  --k-sky-1: #161616;
+  --k-sky-2: #232323;
+  --k-hill-1: #5a5a5a;
+  --k-hill-2: #3e3e3e;
+  --k-hill-3: #2a2a2a;
+  --k-leaf-1: #bdbdbd;
+  --k-leaf-2: #808080;
+  --k-leaf-3: #4d4d4d;
+  --k-trunk: #9a9a9a;
+  --k-petal: #f2f2f2;
+  --k-petal-shade: #b5b5b5;
+  --k-bloom: #a0a0a0;
+  --k-bloom-2: #d0d0d0;
+  --k-pollen: #ffffff;
+  --k-soil: #555555;
+  --k-soil-2: #3a3a3a;
+  --k-pond: #444444;
+}
+
+/* 6. Pastel: hồng, tím, bạc hà nhạt */
+[data-theme='pastel'] {
+  --k-bg: #fdf4f8;
+  --k-surface: #ffffff;
+  --k-surface-2: #f5e6f1;
+  --k-ink: #49345f;
+  --k-muted: #705986;
+  --k-line: #ebd7e8;
+  --k-primary: #7a46a8;
+  --k-on-primary: #ffffff;
+  --k-primary-soft: #efdff8;
+  --k-accent: #b74072;
+  --k-sky-1: #f8c6db;
+  --k-sky-2: #e4d6f8;
+  --k-hill-1: #c8efde;
+  --k-hill-2: #d8c5f2;
+  --k-hill-3: #f6b4cd;
+  --k-leaf-1: #c9f0dc;
+  --k-leaf-2: #8fd6b4;
+  --k-leaf-3: #58ad8a;
+  --k-trunk: #a9839a;
+}
+[data-theme='pastel'].dark {
+  --k-bg: #221a2d;
+  --k-surface: #2d223f;
+  --k-surface-2: #3a2d50;
+  --k-ink: #f6eaf7;
+  --k-muted: #c4aed3;
+  --k-line: #4b3b64;
+  --k-primary: #dbb7f3;
+  --k-on-primary: #291a39;
+  --k-primary-soft: #45335e;
+  --k-accent: #f79abf;
+  --k-sky-1: #3a2748;
+  --k-sky-2: #2f2a55;
+  --k-hill-1: #5fa38a;
+  --k-hill-2: #6d58a0;
+  --k-hill-3: #a25a7c;
+  --k-leaf-1: #a8e3c8;
+  --k-leaf-2: #6fc09d;
+  --k-leaf-3: #46896d;
+  --k-trunk: #b895a9;
+}
+
+/* Lưu ý: các luật dưới đây nằm trong @layer để class của Tailwind (vd text-onprimary) vẫn thắng được. */
+@layer base {
+  /* ============================================================
+     NỀN TẢNG
+     ============================================================ */
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    margin: 0;
+    background: var(--k-bg);
+    color: var(--k-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  #root {
+    min-height: 100dvh;
+  }
+
+  /* Lớp nhiễu hạt mịn phủ toàn màn hình, tạo cảm giác tranh in */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    opacity: var(--k-grain-opacity);
+    mix-blend-mode: var(--k-grain-blend);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.35  0 0 0 0 0.35  0 0 0 0.9 -0.15'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-size: 180px 180px;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--k-primary);
+    outline-offset: 2px;
+  }
+  input[type='date'],
+  input[type='time'] {
+    min-height: 44px;
+  }
+}
+
+@layer components {
+  /* Ô nhập liệu dùng chung */
+  .k-input {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    border: 1.5px solid var(--k-line);
+    background: var(--k-surface);
+    color: var(--k-ink);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .k-input::placeholder {
+    color: color-mix(in srgb, var(--k-muted) 70%, transparent);
+  }
+  .k-input:focus {
+    border-color: var(--k-primary);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* ============================================================
+   HIỆU ỨNG
+   ============================================================ */
+@keyframes k-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes k-sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes k-drop {
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx, 0px), -46px) scale(1.15);
+    opacity: 0;
+  }
+}
+@keyframes k-pop {
+  0% {
+    transform: scale(0.8);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes k-sway {
+  0%,
+  100% {
+    transform: rotate(-1.5deg);
+  }
+  50% {
+    transform: rotate(1.5deg);
+  }
+}
+.k-fade-in {
+  animation: k-fade-in 0.25s ease-out both;
+}
+.k-sheet-up {
+  animation: k-sheet-up 0.22s ease-out both;
+}
+.k-drop {
+  animation: k-drop 0.9s ease-out both;
+}
+.k-pop {
+  animation: k-pop 0.3s ease-out both;
+}
+.k-sway {
+  transform-origin: 50% 100%;
+  animation: k-sway 5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-fade-in,
+  .k-sheet-up,
+  .k-drop,
+  .k-pop,
+  .k-sway {
+    animation: none;
+  }
+}
