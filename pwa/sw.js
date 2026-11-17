@@ -1,8 +1,8 @@
 /*
  * Service worker của Kairos (file mẫu).
  * Khi build, vite.config.ts điền mã phiên bản và danh sách file vào 2 dòng const bên dưới rồi ghi ra dist/sw.js.
- * Nhiệm vụ: lưu sẵn "vỏ app" để mở được khi offline và báo khi có bản mới.
- * (Web Push sẽ được thêm ở giai đoạn 4.)
+ * Nhiệm vụ: lưu sẵn "vỏ app" để mở được khi offline, báo khi có bản mới,
+ * và nhận Web Push (giai đoạn 4): tóm tắt sáng, nhắc nhật ký, nhắc deadline.
  */
 const VERSION = '__VERSION__';
 const CACHE = 'kairos-' + VERSION;
@@ -17,14 +17,47 @@ self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
-// Bấm vào thông báo Focus ("Mầm cây đang chờ bạn", "Hết giờ focus"): mở lại app ở trang Focus
+// Web Push từ Edge Function "tick": hiện thông báo và báo cho app đang mở để cập nhật chuông
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  const title = data.title || 'Kairos';
+  const options = {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    tag: data.tag || 'kairos',
+    data: { url: data.url || '/', id: data.id || null },
+  };
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      self.clients
+        .matchAll({ type: 'window', includeUncontrolled: true })
+        .then((list) => list.forEach((c) => c.postMessage({ type: 'kairos-push' }))),
+    ]),
+  );
+});
+
+// Bấm vào thông báo: mở lại app đúng trang. Thông báo Focus ("Mầm cây đang chờ bạn", "Hết giờ focus")
+// không có đường dẫn riêng nên mở trang Focus.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const info = event.notification.data || {};
+  const url = info.url || '/focus';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       const open = list.find((c) => c.url.startsWith(self.location.origin));
-      if (open) return open.focus();
-      return self.clients.openWindow('/focus');
+      if (open) {
+        // App đang mở: chuyển trang bên trong app (không tải lại) và đánh dấu đã đọc
+        if (info.url) open.postMessage({ type: 'kairos-open', url: info.url, id: info.id || null });
+        return open.focus();
+      }
+      return self.clients.openWindow(info.id ? `${url}${url.includes('?') ? '&' : '?'}tb=${encodeURIComponent(info.id)}` : url);
     }),
   );
 });

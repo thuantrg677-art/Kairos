@@ -52,6 +52,10 @@ interface Store extends Collections {
   toggleTask: (task: Task, date: string) => number;
   /** Lấy lịch sử tick và focus của một khoảng ngày (để xem các tháng cũ hơn phần đã tải sẵn) */
   loadRange: (from: string, to: string) => Promise<Pick<Snapshot, 'task_completions' | 'focus_sessions'>>;
+  /** Chỉ tải lại thông báo (khi vừa có push tới) */
+  refreshNotifications: () => Promise<void>;
+  /** Đánh dấu đã đọc: một số thông báo, hoặc tất cả */
+  markRead: (ids: string[] | 'all') => void;
 
   toast: (text: string, kind?: Toast['kind']) => void;
   dismissToast: (id: number) => void;
@@ -69,7 +73,11 @@ const EMPTY: Collections = {
   focus_sessions: [],
   journals: [],
   weekly_reviews: [],
+  notifications: [],
 };
+
+/** Số thông báo gần nhất được tải về (chuông trong app) */
+const NOTIFICATION_LIMIT = 60;
 
 /** Dữ liệu tick và focus được tải sẵn từ ngày này trở đi (cũ hơn thì tải khi cần) */
 export const LOADED_DAYS = 100;
@@ -109,6 +117,7 @@ async function loadCloud(uid: string): Promise<Snapshot> {
       if (t === 'schedule_blocks') q = q.gte('date', addDays(todayISO(), -14));
       if (t === 'focus_sessions') q = q.gte('started_at', since);
       if (t === 'journals') q = q.gte('date', addDays(todayISO(), -400));
+      if (t === 'notifications') return q.gte('created_at', `${addDays(todayISO(), -30)}T00:00:00Z`).order('created_at', { ascending: false }).limit(NOTIFICATION_LIMIT);
       return q;
     }),
   );
@@ -377,6 +386,30 @@ export const useStore = create<Store>((set, get) => {
           return d >= from && d <= to;
         }),
       };
+    },
+
+    refreshNotifications: async () => {
+      const { mode, userId, online } = get();
+      if (mode !== 'cloud' || !userId || !online || !supabase) return;
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .gte('created_at', `${addDays(todayISO(), -30)}T00:00:00Z`)
+        .order('created_at', { ascending: false })
+        .limit(NOTIFICATION_LIMIT);
+      if (!error && data) set({ notifications: data });
+    },
+
+    markRead: (ids) => {
+      const s = get();
+      const now = new Date().toISOString();
+      const target = new Set(ids === 'all' ? s.notifications.filter((n) => !n.read_at).map((n) => n.id) : ids);
+      if (!target.size || s.status !== 'ready') return;
+      // Đánh dấu đã đọc không cần báo lỗi khi offline: lần sau có mạng sẽ đọc lại từ server
+      set({ notifications: s.notifications.map((n) => (target.has(n.id) && !n.read_at ? { ...n, read_at: now } : n)) });
+      if (s.mode !== 'cloud' || !s.online || !supabase) return;
+      const sb = supabase;
+      queueWrite(() => (ids === 'all' ? sb.from('notifications').update({ read_at: now }).is('read_at', null) : sb.from('notifications').update({ read_at: now }).in('id', [...target])));
     },
 
     toast: (text, kind = 'info') => {

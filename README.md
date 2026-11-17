@@ -14,6 +14,8 @@
 
 👉 **[Hướng dẫn giai đoạn 3](docs/HUONG-DAN-GD3.md)**: chạy 1 file SQL nhỏ và cập nhật code Edge Function `ai`. Khoảng 5 phút.
 
+👉 **[Hướng dẫn giai đoạn 4](docs/HUONG-DAN-GD4.md)**: chạy 1 file SQL, tạo Edge Function `tick` để có thông báo (tóm tắt sáng, nhắc deadline, nhắc nhật ký), kèm danh sách kiểm thử trên điện thoại. Khoảng 10 phút.
+
 Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu mẫu** (không cần tài khoản).
 
 ## Các giai đoạn
@@ -24,7 +26,7 @@ Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu m�
 | 2a | AI gợi ý đầu việc, gắn nhãn 20/80, diễn đạt mục tiêu, nhận xét liên kết, xếp Nháp, xếp lịch Hôm nay | ✅ Xong (cần bật theo hướng dẫn) |
 | 2b | Focus + âm thanh + thống kê | ✅ Xong |
 | 3 | Vườn đầy đủ (héo/hồi phục, kỷ niệm), nhật ký ngày, nhìn lại tuần, AI nhận xét tuần, lịch sử dạng lịch | ✅ Xong (cần làm theo hướng dẫn GĐ3) |
-| 4 | Web Push, nhắc deadline 7/3/1 ngày, Tổng quan đầy đủ, hoàn thiện | |
+| 4 | Web Push + chuông trong app, tóm tắt sáng, nhắc deadline 7/3/1 ngày, nhắc nhật ký, Tổng quan đầy đủ | ✅ Xong (cần làm theo hướng dẫn GĐ4) |
 
 ## Công nghệ
 
@@ -35,7 +37,7 @@ React 19 · Vite · TypeScript · Tailwind CSS 4 · zustand · Supabase (Auth + 
 ```
 index.html              Trang gốc
 public/                 Icon, logo, manifest của PWA
-pwa/sw.js               Service worker (mẫu; được điền phiên bản lúc build)
+pwa/sw.js               Service worker (mẫu; được điền phiên bản lúc build): offline, cập nhật, Web Push
 src/
   main.tsx, App.tsx     Khởi động app, chọn màn hình theo trạng thái đăng nhập
   index.css             6 theme (sáng + tối), nhiễu hạt, hiệu ứng
@@ -45,6 +47,8 @@ src/
     logic.ts            Việc của ngày, thứ tự ưu tiên, điểm 💧, khung trống, tự xếp việc, điểm tuần
     garden.ts           Cây héo/hồi phục, hiệu ứng lên giai đoạn, kết thúc chu kỳ, Khu vườn kỷ niệm
     review.ts           Số liệu nhật ký ngày, nhìn lại tuần, lịch sử dạng lịch
+    overview.ts         Số liệu Tổng quan: deadline sắp tới, giờ focus, chi tiết mục tiêu
+    push.ts             Bật/tắt/gửi thử thông báo đẩy trên thiết bị
     dates.ts            Ngày giờ kiểu Việt Nam (dd/mm/yyyy, tuần bắt đầu thứ Hai)
     seed.ts             Dữ liệu mẫu
     supabase.ts         Kết nối Supabase
@@ -54,6 +58,7 @@ src/
   pages/                Login, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, WeekReview, JournalPage, History, Settings
 supabase/migrations/    File SQL tạo database (bảng + Row Level Security), chạy theo thứ tự 001, 002…
 supabase/functions/ai/  Edge Function AI (khóa Gemini chỉ nằm ở đây, trên server)
+supabase/functions/tick/ Edge Function thông báo: cron 15 phút, Web Push, đăng ký thiết bị
 docs/                   Hướng dẫn cho từng giai đoạn
 ```
 

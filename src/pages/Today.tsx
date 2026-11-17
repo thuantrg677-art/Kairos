@@ -14,6 +14,7 @@ import { TaskRow } from '@/components/TaskRow';
 import { Timeline } from '@/components/Timeline';
 import { TaskEditor } from '@/components/Editors';
 import { useInboxCount } from '@/components/AppShell';
+import { NotificationBell } from '@/components/Notifications';
 import { AIButton, QuotaHint } from '@/components/AI';
 import { useAI } from '@/lib/ai';
 import { JournalCard, WeekReviewPrompt } from '@/components/Journal';
@@ -145,16 +146,19 @@ export default function Today() {
                   </span>
                 </div>
               </div>
-              <div className="-mt-1.5 -mr-2 flex lg:hidden">
-                <button aria-label={`Nháp${inboxCount ? ` (${inboxCount} mục)` : ''}`} onClick={() => navigate('/nhap')} className="relative flex h-11 w-11 items-center justify-center rounded-full">
-                  <Inbox size={22} />
-                  {inboxCount > 0 && (
-                    <span className="absolute top-1 right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold text-onaccent">{inboxCount}</span>
-                  )}
-                </button>
-                <button aria-label="Cài đặt" onClick={() => navigate('/cai-dat')} className="flex h-11 w-11 items-center justify-center rounded-full">
-                  <Settings size={22} />
-                </button>
+              <div className="-mt-1.5 -mr-2 flex">
+                <NotificationBell />
+                <span className="flex lg:hidden">
+                  <button aria-label={`Nháp${inboxCount ? ` (${inboxCount} mục)` : ''}`} onClick={() => navigate('/nhap')} className="relative flex h-11 w-11 items-center justify-center rounded-full">
+                    <Inbox size={22} />
+                    {inboxCount > 0 && (
+                      <span className="absolute top-1 right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold text-onaccent">{inboxCount}</span>
+                    )}
+                  </button>
+                  <button aria-label="Cài đặt" onClick={() => navigate('/cai-dat')} className="flex h-11 w-11 items-center justify-center rounded-full">
+                    <Settings size={22} />
+                  </button>
+                </span>
               </div>
             </div>
           </div>

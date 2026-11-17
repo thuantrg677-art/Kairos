@@ -9,7 +9,22 @@ export interface ProfileSettings {
   /** Giờ bắt đầu và kết thúc một ngày trên dòng thời gian, tính bằng phút từ 0h */
   day_start_min?: number;
   day_end_min?: number;
+  /** Cài đặt nhắc (giai đoạn 4). Thiếu trường nào thì dùng mặc định trong NOTIFY_DEFAULTS. */
+  notify?: Partial<NotifySettings>;
 }
+
+/** Giờ nhắc tính bằng phút từ 0h, theo múi giờ của thiết bị (profiles.timezone) */
+export interface NotifySettings {
+  /** Tóm tắt buổi sáng */
+  morning: boolean;
+  morning_min: number;
+  /** Nhắc viết nhật ký nếu tối đó chưa viết */
+  journal: boolean;
+  journal_min: number;
+  /** Nhắc việc có "Deadline quan trọng" trước 7, 3, 1 ngày (gửi cùng giờ tóm tắt sáng) */
+  deadline: boolean;
+}
+export const NOTIFY_DEFAULTS: NotifySettings = { morning: true, morning_min: 7 * 60, journal: true, journal_min: 21 * 60 + 30, deadline: true };
 
 export interface Profile {
   id: string;
@@ -77,7 +92,7 @@ export interface Task {
   leverage: 'high' | 'normal';
   leverage_reason: string;
   leverage_source: 'manual' | 'ai';
-  /** Deadline quan trọng: sẽ được nhắc trước 7, 3 và 1 ngày (giai đoạn 4) */
+  /** Deadline quan trọng: được nhắc trước 7, 3 và 1 ngày (Edge Function tick) */
   important: boolean;
   /** Việc một lần đã xong lúc nào */
   done_at: string | null;
@@ -189,6 +204,21 @@ export interface WeeklyReview {
   created_at: string;
 }
 
+/** Thông báo trong app (chuông). Chỉ server tạo; app chỉ đọc và đánh dấu đã đọc. */
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  /** morning | deadline | journal | test */
+  kind: string;
+  title: string;
+  body: string;
+  /** Đường dẫn trong app khi bấm vào */
+  url: string;
+  dedupe_key: string;
+  read_at: string | null;
+  created_at: string;
+}
+
 export interface Tables {
   visions: Vision;
   cycles: Cycle;
@@ -201,6 +231,7 @@ export interface Tables {
   focus_sessions: FocusSession;
   journals: Journal;
   weekly_reviews: WeeklyReview;
+  notifications: AppNotification;
 }
 export type TableName = keyof Tables;
 export const TABLE_NAMES: TableName[] = [
@@ -215,6 +246,7 @@ export const TABLE_NAMES: TableName[] = [
   'focus_sessions',
   'journals',
   'weekly_reviews',
+  'notifications',
 ];
 
 /** Toàn bộ dữ liệu của một người dùng */

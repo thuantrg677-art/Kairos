@@ -200,7 +200,7 @@ export function TaskEditor({
               <div className="flex items-center justify-between gap-4">
                 <span className="text-sm">
                   <span className="font-semibold">Deadline quan trọng</span>
-                  <span className="block text-[13px] text-muted">Sẽ được nhắc trước 7, 3 và 1 ngày (bật ở giai đoạn 4)</span>
+                  <span className="block text-[13px] text-muted">Được nhắc trước 7, 3 và 1 ngày (cài giờ nhắc trong Cài đặt → Thông báo)</span>
                 </span>
                 <Switch checked={important} onChange={setImportant} label="Deadline quan trọng" />
               </div>

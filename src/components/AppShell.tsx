@@ -6,7 +6,9 @@ import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router
 import { ArrowLeft, BookOpen, ChartNoAxesColumn, Inbox, PenLine, RefreshCw, Settings, Sprout, Sun, Target, Timer, WifiOff } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { usePwa } from '@/lib/pwa';
+import { usePush } from '@/lib/push';
 import { Button, cx, IconButton, Sheet } from './ui';
+import { NotificationBell } from './Notifications';
 import { LogoWord } from './Logo';
 import { FocusPill } from './FocusPill';
 
@@ -114,6 +116,44 @@ export function AppShell({ children }: { children: ReactNode }) {
       navigate(location.pathname, { replace: true });
     }
   }, [params, navigate, location.pathname]);
+
+  // Bấm vào thông báo đẩy lúc app đang đóng: app mở với ?tb=<id> → đánh dấu đã đọc
+  useEffect(() => {
+    const id = params.get('tb');
+    if (!id) return;
+    useStore.getState().markRead([id]);
+    const next = new URLSearchParams(params);
+    next.delete('tb');
+    navigate({ pathname: location.pathname, search: next.toString() ? `?${next}` : '' }, { replace: true });
+  }, [params, navigate, location.pathname]);
+
+  // Tin nhắn từ service worker: có push mới (tải lại chuông), hoặc bấm thông báo lúc app đang mở (chuyển trang)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      const msg = e.data as { type?: string; url?: string; id?: string | null } | null;
+      if (msg?.type === 'kairos-push') void useStore.getState().refreshNotifications();
+      if (msg?.type === 'kairos-open' && msg.url) {
+        if (msg.id) useStore.getState().markRead([msg.id]);
+        navigate(msg.url);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate]);
+
+  // Mỗi lần mở app (đã đăng nhập): ghi múi giờ của thiết bị để server nhắc đúng giờ,
+  // và kiểm tra thiết bị này còn nhận thông báo không
+  const mode = useStore((s) => s.mode);
+  const online = useStore((s) => s.online);
+  const stale = useStore((s) => s.stale);
+  useEffect(() => {
+    if (mode !== 'cloud' || !online || stale) return;
+    const st = useStore.getState();
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && st.profile && st.profile.timezone !== tz) st.updateProfile({ timezone: tz });
+    if (usePush.getState().state === 'checking') void usePush.getState().check();
+  }, [mode, online, stale]);
 
   // Chuyển màn thì cuộn về đầu trang
   useEffect(() => {
@@ -225,6 +265,7 @@ export function PageHeader({ title, subtitle, children }: { title: string; subti
       </div>
       <div className="flex shrink-0 items-center">
         {children}
+        <NotificationBell />
         <span className="flex lg:hidden">
           <IconButton label={`Nháp${inboxCount ? ` (${inboxCount} mục)` : ''}`} onClick={() => navigate('/nhap')} className="relative">
             <Inbox size={22} />

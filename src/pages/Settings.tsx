@@ -1,7 +1,7 @@
-// "Cài đặt": giao diện, lịch cố định, khung giờ trong ngày, cài app, tài khoản.
+// "Cài đặt": giao diện, lịch cố định, khung giờ trong ngày, cài app, thông báo, tài khoản.
 
-import { type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, LogOut, RotateCcw, Share } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { isIOS, usePwa } from '@/lib/pwa';
@@ -11,10 +11,11 @@ import { Button, Card, Field, IconButton } from '@/components/ui';
 import { DarkModePicker, ThemePicker } from '@/components/pickers';
 import { FixedScheduleEditor } from '@/components/FixedScheduleEditor';
 import { AIStatus } from '@/components/AI';
+import { NotificationSettings } from '@/components/Notifications';
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section>
+    <section id={id} className="scroll-mt-4">
       <h2 className="mb-2 text-[13px] font-bold tracking-wide text-muted uppercase">{title}</h2>
       <Card className="p-4">{children}</Card>
     </section>
@@ -23,6 +24,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 export default function Settings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const profile = useStore((s) => s.profile)!;
   const mode = useStore((s) => s.mode);
   const email = useStore((s) => s.email);
@@ -36,6 +38,13 @@ export default function Settings() {
     if ((next.day_end_min ?? 1380) - (next.day_start_min ?? 360) < 120) return st.toast('Một ngày cần dài ít nhất 2 tiếng.');
     st.updateProfile({ settings: next });
   };
+
+  // Đến từ chuông thông báo (/cai-dat#thong-bao): cuộn tới mục Thông báo
+  useEffect(() => {
+    if (!location.hash) return;
+    const t = setTimeout(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    return () => clearTimeout(t);
+  }, [location.hash]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -112,8 +121,8 @@ export default function Settings() {
           <AIStatus />
         </Section>
 
-        <Section title="Thông báo">
-          <p className="text-sm leading-relaxed text-muted">Tóm tắt buổi sáng, nhắc viết nhật ký và nhắc deadline trước 7, 3, 1 ngày sẽ có ở giai đoạn 4.</p>
+        <Section title="Thông báo" id="thong-bao">
+          <NotificationSettings />
         </Section>
 
         <Section title="Tài khoản">
@@ -148,7 +157,7 @@ export default function Settings() {
           )}
         </Section>
 
-        <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 3 · Focus on what matters</p>
+        <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 4 · Focus on what matters</p>
       </div>
     </div>
   );

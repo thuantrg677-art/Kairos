@@ -1,9 +1,9 @@
 // Dữ liệu mẫu cho chế độ "Xem thử": một sinh viên đang ở tuần 5/12.
 // Mọi ngày tháng tính tương đối so với hôm nay nên lúc nào mở cũng thấy hợp lý.
 
-import type { FixedEvent, FocusSession, Goal, Journal, Snapshot, Task, TaskCompletion, WeeklyReview } from './types';
+import type { AppNotification, FixedEvent, FocusSession, Goal, Journal, Snapshot, Task, TaskCompletion, WeeklyReview } from './types';
 import { addDays, isoWeekday, mondayOf, todayISO } from './dates';
-import { CYCLE_DAYS, taskPoints, weekStats } from './logic';
+import { CYCLE_DAYS, itemsForDate, taskPoints, weekStats } from './logic';
 
 export const DEMO_USER = 'demo';
 let n = 0;
@@ -32,6 +32,7 @@ export function emptySnapshot(userId: string, onboarded = false): Snapshot {
     focus_sessions: [],
     journals: [],
     weekly_reviews: [],
+    notifications: [],
   };
 }
 
@@ -188,6 +189,29 @@ export function buildSeed(): Snapshot {
     };
   }
   s.weekly_reviews = reviews;
+
+  // Thông báo mẫu (chuông trong app): giống những gì server gửi ở giai đoạn 4
+  const local = (date: string, h: number, m: number) => new Date(`${date}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).toISOString();
+  const open = itemsForDate(s, today).filter((i) => !i.done);
+  const highs = open.filter((i) => i.task.leverage === 'high').length;
+  const first = open[0];
+  const chapter = s.tasks.find((t) => t.title.startsWith('Viết chương 2'))!;
+  const note = (p: Omit<AppNotification, 'id' | 'user_id'>): AppNotification => ({ id: id('n'), user_id: u, ...p });
+  s.notifications = [
+    note({
+      kind: 'morning', title: `☀️ Hôm nay có ${open.length} việc${highs ? ` · ${highs} việc 20%` : ''}`,
+      body: first ? `Bắt đầu với “${first.task.title}”.` : 'Hôm nay chưa có việc nào trong kế hoạch.',
+      url: '/', dedupe_key: `morning:${today}`, read_at: null, created_at: local(today, 7, 0),
+    }),
+    note({
+      kind: 'journal', title: '🌙 Hôm nay của bạn thế nào?', body: 'Dành 1 phút ghi lại năng lượng, việc đã làm được và điều muốn làm tốt hơn ngày mai.',
+      url: '/tong-quan/nhat-ky', dedupe_key: `journal:${addDays(today, -1)}`, read_at: local(addDays(today, -1), 21, 40), created_at: local(addDays(today, -1), 21, 30),
+    }),
+    note({
+      kind: 'deadline', title: `⏰ Còn 7 ngày: ${chapter.title}`, body: 'Đây là việc 20%. Mục tiêu: Hoàn thành đồ án môn học đạt 8.5+.',
+      url: '/muc-tieu', dedupe_key: `deadline:${chapter.id}:${chapter.due_date}:7`, read_at: null, created_at: local(addDays(today, -1), 7, 0),
+    }),
+  ];
 
   s.inbox_items = [inbox('Ý tưởng: làm flashcard từ vựng bằng Anki', 0), inbox('Hỏi thầy về format báo cáo', 1), inbox('Mua giày chạy mới', 2)];
   return s;

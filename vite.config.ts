@@ -23,6 +23,7 @@ function kairosServiceWorker(): Plugin {
         '/manifest.webmanifest',
         '/icons/icon-192.png',
         '/icons/logo-mark.png',
+        '/icons/badge-96.png',
         ...files.map((f) => '/' + f),
       ];
       const template = readFileSync(fileURLToPath(new URL('./pwa/sw.js', import.meta.url)), 'utf8');
