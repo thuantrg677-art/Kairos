@@ -8,6 +8,7 @@ import { useStore } from '@/lib/store';
 import { usePwa } from '@/lib/pwa';
 import { Button, cx, IconButton, Sheet } from './ui';
 import { LogoWord } from './Logo';
+import { FocusPill } from './FocusPill';
 
 const TABS = [
   { to: '/', label: 'Hôm nay', icon: Sun },
@@ -186,6 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </nav>
 
+      <FocusPill />
       <QuickCapture open={capture} onClose={() => setCapture(false)} />
     </div>
   );

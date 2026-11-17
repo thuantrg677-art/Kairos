@@ -17,6 +17,18 @@ self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// Bấm vào thông báo Focus ("Mầm cây đang chờ bạn", "Hết giờ focus"): mở lại app ở trang Focus
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => c.url.startsWith(self.location.origin));
+      if (open) return open.focus();
+      return self.clients.openWindow('/focus');
+    }),
+  );
+});
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches

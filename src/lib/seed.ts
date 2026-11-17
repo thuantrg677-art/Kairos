@@ -1,7 +1,7 @@
 // Dữ liệu mẫu cho chế độ "Xem thử": một sinh viên đang ở tuần 5/12.
 // Mọi ngày tháng tính tương đối so với hôm nay nên lúc nào mở cũng thấy hợp lý.
 
-import type { FixedEvent, Goal, Snapshot, Task, TaskCompletion } from './types';
+import type { FixedEvent, FocusSession, Goal, Snapshot, Task, TaskCompletion } from './types';
 import { addDays, isoWeekday, mondayOf, todayISO } from './dates';
 import { CYCLE_DAYS, taskPoints } from './logic';
 
@@ -29,6 +29,7 @@ export function emptySnapshot(userId: string, onboarded = false): Snapshot {
     fixed_events: [],
     schedule_blocks: [],
     inbox_items: [],
+    focus_sessions: [],
   };
 }
 
@@ -91,6 +92,26 @@ export function buildSeed(): Snapshot {
     }
   }
   s.task_completions = completions;
+
+  // Lịch sử focus giả lập: phần lớn thời gian dành cho việc 20%
+  const focus: FocusSession[] = [];
+  for (let d = start; d < today; d = addDays(d, 1)) {
+    for (const c of completions) {
+      if (c.date !== d || rand() > 0.55) continue;
+      const t = s.tasks.find((x) => x.id === c.task_id)!;
+      const planned = t.estimate_min >= 60 ? 50 : 25;
+      const done = rand() < 0.85;
+      const hour = 8 + Math.floor(rand() * 13);
+      const startedAt = new Date(`${d}T${String(hour).padStart(2, '0')}:00:00`);
+      const sec = done ? planned * 60 : Math.round(planned * 60 * (0.3 + rand() * 0.5));
+      focus.push({
+        id: id('f'), user_id: u, task_id: t.id, goal_id: t.goal_id, started_at: startedAt.toISOString(),
+        ended_at: new Date(startedAt.getTime() + sec * 1000).toISOString(), planned_min: planned, actual_sec: sec, completed: done,
+        created_at: startedAt.toISOString(),
+      });
+    }
+  }
+  s.focus_sessions = focus;
 
   const ev = (title: string, weekday: number, start_min: number, end_min: number, color: string): FixedEvent => ({
     id: id('e'), user_id: u, title, weekday, start_min, end_min, color, created_at: createdAt,

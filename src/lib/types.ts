@@ -126,6 +126,23 @@ export interface InboxItem {
   created_at: string;
 }
 
+/** Một phiên Focus. Chỉ ghi phiên tập trung (không ghi giờ nghỉ). */
+export interface FocusSession {
+  id: string;
+  user_id: string;
+  task_id: string | null;
+  goal_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  /** Số phút đã đặt (25/50/90/tự đặt) */
+  planned_min: number;
+  /** Số giây thực sự tập trung (không tính lúc tạm dừng) */
+  actual_sec: number;
+  /** true = chạy hết giờ; false = dừng sớm */
+  completed: boolean;
+  created_at: string;
+}
+
 export interface Tables {
   visions: Vision;
   cycles: Cycle;
@@ -135,6 +152,7 @@ export interface Tables {
   fixed_events: FixedEvent;
   schedule_blocks: ScheduleBlock;
   inbox_items: InboxItem;
+  focus_sessions: FocusSession;
 }
 export type TableName = keyof Tables;
 export const TABLE_NAMES: TableName[] = [
@@ -146,6 +164,7 @@ export const TABLE_NAMES: TableName[] = [
   'fixed_events',
   'schedule_blocks',
   'inbox_items',
+  'focus_sessions',
 ];
 
 /** Toàn bộ dữ liệu của một người dùng */

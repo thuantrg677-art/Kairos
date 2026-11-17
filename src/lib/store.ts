@@ -62,6 +62,7 @@ const EMPTY: Collections = {
   fixed_events: [],
   schedule_blocks: [],
   inbox_items: [],
+  focus_sessions: [],
 };
 
 function readJSON<T>(key: string): T | null {
@@ -96,6 +97,7 @@ async function loadCloud(uid: string): Promise<Snapshot> {
       let q = sb.from(t).select('*');
       if (t === 'task_completions') q = q.gte('date', since);
       if (t === 'schedule_blocks') q = q.gte('date', addDays(todayISO(), -14));
+      if (t === 'focus_sessions') q = q.gte('started_at', since);
       return q;
     }),
   );
@@ -289,11 +291,14 @@ export const useStore = create<Store>((set, get) => {
           next.task_completions = s.task_completions.filter((c) => !ids.has(c.task_id));
           next.schedule_blocks = s.schedule_blocks.filter((b) => !ids.has(b.task_id));
           next.inbox_items = s.inbox_items.map((i) => (i.task_id && ids.has(i.task_id) ? { ...i, task_id: null } : i));
+          // Phiên focus vẫn giữ (để còn thống kê), chỉ bỏ liên kết tới việc đã xóa
+          next.focus_sessions = (next.focus_sessions ?? s.focus_sessions).map((f) => (f.task_id && ids.has(f.task_id) ? { ...f, task_id: null } : f));
         };
         if (table === 'tasks') dropTasks(new Set([id]));
         if (table === 'goals') {
           const ids = new Set(s.tasks.filter((t) => t.goal_id === id).map((t) => t.id));
           next.tasks = s.tasks.filter((t) => t.goal_id !== id);
+          next.focus_sessions = s.focus_sessions.map((f) => (f.goal_id === id ? { ...f, goal_id: null } : f));
           dropTasks(ids);
         }
         return next;
@@ -369,5 +374,6 @@ export const useData = () =>
       fixed_events: s.fixed_events,
       schedule_blocks: s.schedule_blocks,
       inbox_items: s.inbox_items,
+      focus_sessions: s.focus_sessions,
     })),
   );
