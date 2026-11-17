@@ -19,6 +19,7 @@ import { AIButton, QuotaHint } from '@/components/AI';
 import { useAI } from '@/lib/ai';
 import { JournalCard, WeekReviewPrompt } from '@/components/Journal';
 import { CycleEndBanner } from '@/components/CycleWrap';
+import { PracticeCard } from '@/components/Practice';
 
 export default function Today() {
   const d = useData();
@@ -167,6 +168,11 @@ export default function Today() {
             <CycleEndBanner />
           </div>
 
+          <div className="mb-5 empty:hidden">
+            <PracticeCard />
+          </div>
+
+          <div id="viec-hom-nay" className="scroll-mt-4" />
           <SectionTitle
             action={
               <Button size="sm" variant="soft" onClick={() => setAdding(true)}>
@@ -239,12 +245,14 @@ export default function Today() {
 
           <div className="mt-5 flex flex-col gap-3">
             <WeekReviewPrompt />
-            <JournalCard />
+            <div id="nhat-ky-hom-nay" className="scroll-mt-4">
+              <JournalCard />
+            </div>
           </div>
         </section>
 
         {/* Cột phải: dòng thời gian */}
-        <section>
+        <section id="dong-thoi-gian" className="scroll-mt-4">
           <SectionTitle>Dòng thời gian</SectionTitle>
           <Card className="p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

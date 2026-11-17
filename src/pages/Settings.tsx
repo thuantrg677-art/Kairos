@@ -1,13 +1,14 @@
-// "Cài đặt": giao diện, lịch cố định, khung giờ trong ngày, cài app, thông báo, tài khoản.
+// "Cài đặt": hướng dẫn sử dụng, giao diện, lịch cố định, khung giờ trong ngày, cài app, thông báo, tài khoản.
 
 import { useEffect, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, LogOut, RotateCcw, Share } from 'lucide-react';
-import { useStore } from '@/lib/store';
+import { ArrowLeft, BookOpenText, Download, LogOut, RotateCcw, Share } from 'lucide-react';
+import { useData, useStore } from '@/lib/store';
+import { patchSettings, practiceSteps } from '@/lib/guide';
 import { isIOS, usePwa } from '@/lib/pwa';
 import { hmToMin, minToHM } from '@/lib/dates';
 import { isDark } from '@/lib/themes';
-import { Button, Card, Field, IconButton } from '@/components/ui';
+import { Button, Card, Field, IconButton, Switch } from '@/components/ui';
 import { DarkModePicker, ThemePicker } from '@/components/pickers';
 import { FixedScheduleEditor } from '@/components/FixedScheduleEditor';
 import { AIStatus } from '@/components/AI';
@@ -56,6 +57,10 @@ export default function Settings() {
       </header>
 
       <div className="flex flex-col gap-5 px-4 lg:px-8">
+        <Section title="Hướng dẫn sử dụng" id="huong-dan">
+          <GuideSettings />
+        </Section>
+
         <Section title="Giao diện">
           <ThemePicker value={profile.theme} dark={isDark(profile.dark_mode)} onChange={(theme) => st.updateProfile({ theme })} />
           <div className="mt-3">
@@ -160,5 +165,31 @@ export default function Settings() {
         <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 4 · Focus on what matters</p>
       </div>
     </div>
+  );
+}
+
+/** Mở lại hướng dẫn + bật/tắt thẻ Tập làm quen ở màn Hôm nay */
+function GuideSettings() {
+  const navigate = useNavigate();
+  const d = useData();
+  const hidden = !!d.profile?.settings.practice_hidden;
+  const steps = practiceSteps(d);
+  const done = steps.filter((s) => s.done).length;
+  return (
+    <>
+      <p className="text-sm leading-relaxed text-muted">Lời chào của nhóm SEEDS, các nguyên lý của Kairos (80/20, tập trung sâu, kế hoạch 12 tuần, mục tiêu dài hạn và ngắn hạn, nhìn lại) và toàn bộ tính năng. Khoảng 5 phút.</p>
+      <Button className="mt-3" onClick={() => navigate('/huong-dan')}>
+        <BookOpenText size={18} /> Mở hướng dẫn
+      </Button>
+      <div className="mt-4 flex items-center justify-between gap-4 border-t border-line pt-4">
+        <span className="text-sm">
+          <span className="font-semibold text-ink">Thẻ Tập làm quen ở màn Hôm nay</span>
+          <span className="block text-[13px] text-muted">
+            {steps.length} bước nhỏ để dùng thử từng tính năng · đã xong {done}/{steps.length}
+          </span>
+        </span>
+        <Switch checked={!hidden} onChange={(on) => patchSettings({ practice_hidden: !on })} label="Hiện thẻ Tập làm quen" />
+      </div>
+    </>
   );
 }

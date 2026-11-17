@@ -11,6 +11,10 @@ export interface ProfileSettings {
   day_end_min?: number;
   /** Cài đặt nhắc (giai đoạn 4). Thiếu trường nào thì dùng mặc định trong NOTIFY_DEFAULTS. */
   notify?: Partial<NotifySettings>;
+  /** Lúc xem xong (hoặc bỏ qua) Hướng dẫn sử dụng lần đầu. Chưa có thì người mới sẽ thấy hướng dẫn trước phần thiết lập. */
+  guide_seen_at?: string;
+  /** Ẩn thẻ "Tập làm quen" ở màn Hôm nay (bật lại trong Cài đặt → Hướng dẫn sử dụng) */
+  practice_hidden?: boolean;
 }
 
 /** Giờ nhắc tính bằng phút từ 0h, theo múi giờ của thiết bị (profiles.timezone) */

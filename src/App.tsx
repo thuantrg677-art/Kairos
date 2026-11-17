@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useStore } from '@/lib/store';
 import { startPwa } from '@/lib/pwa';
 import { applyTheme, storedTheme } from '@/lib/themes';
@@ -19,11 +19,19 @@ import WeekReview from '@/pages/WeekReview';
 import JournalPage from '@/pages/JournalPage';
 import History from '@/pages/History';
 
+// Hướng dẫn sử dụng ít khi mở nên tải riêng, không làm nặng lần mở app
+const Guide = lazy(() => import('@/pages/Guide'));
+
 let started = false;
 
 export default function App() {
   const status = useStore((s) => s.status);
   const profile = useStore((s) => s.profile);
+  const hasVisions = useStore((s) => s.visions.length > 0);
+  const location = useLocation();
+  // Người mới: xem Hướng dẫn sử dụng trước phần thiết lập. Đã có mục tiêu dài hạn (đang thiết lập dở) thì bỏ qua.
+  const [guideDone, setGuideDone] = useState(false);
+  const needsGuide = !guideDone && !profile?.settings?.guide_seen_at && !hasVisions;
 
   // Khởi động một lần: kiểm tra đăng nhập, tải dữ liệu, bật phần PWA
   useEffect(() => {
@@ -67,8 +75,11 @@ export default function App() {
     );
   } else if (status === 'signed-out') {
     screen = <Login />;
+  } else if (location.pathname === '/huong-dan') {
+    // Mở lại hướng dẫn từ Cài đặt (hoặc từ phần thiết lập)
+    screen = <Guide mode="replay" />;
   } else if (!profile?.onboarded_at) {
-    screen = <Onboarding />;
+    screen = needsGuide ? <Guide mode="first" onFinish={() => setGuideDone(true)} /> : <Onboarding />;
   } else {
     screen = (
       <AppShell>
@@ -91,7 +102,7 @@ export default function App() {
 
   return (
     <>
-      {screen}
+      <Suspense fallback={<div className="min-h-dvh" />}>{screen}</Suspense>
       <Toasts />
     </>
   );

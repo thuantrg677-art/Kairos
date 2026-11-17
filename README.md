@@ -27,6 +27,7 @@ Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu m�
 | 2b | Focus + âm thanh + thống kê | ✅ Xong |
 | 3 | Vườn đầy đủ (héo/hồi phục, kỷ niệm), nhật ký ngày, nhìn lại tuần, AI nhận xét tuần, lịch sử dạng lịch | ✅ Xong (cần làm theo hướng dẫn GĐ3) |
 | 4 | Web Push + chuông trong app, tóm tắt sáng, nhắc deadline 7/3/1 ngày, nhắc nhật ký, Tổng quan đầy đủ | ✅ Xong (cần làm theo hướng dẫn GĐ4) |
+| Hướng dẫn | Hướng dẫn sử dụng cho người mới (mở lại trong Cài đặt), gợi ý mục tiêu mẫu, thẻ Tập làm quen 8 bước | ✅ Xong |
 
 ## Công nghệ
 
@@ -55,7 +56,7 @@ src/
     ai.ts               Gọi AI qua Edge Function, đếm lượt, báo lỗi dễ hiểu
     themes.ts, pwa.ts   Theme; cài app và cập nhật phiên bản
   components/           Nút, thẻ, bảng trượt, cây/hoa SVG, tranh nền, dòng thời gian, các bảng thêm/sửa
-  pages/                Login, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, WeekReview, JournalPage, History, Settings
+  pages/                Login, Guide, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, WeekReview, JournalPage, History, Settings
 supabase/migrations/    File SQL tạo database (bảng + Row Level Security), chạy theo thứ tự 001, 002…
 supabase/functions/ai/  Edge Function AI (khóa Gemini chỉ nằm ở đây, trên server)
 supabase/functions/tick/ Edge Function thông báo: cron 15 phút, Web Push, đăng ký thiết bị

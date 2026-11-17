@@ -24,6 +24,7 @@ export function TaskEditor({
   task,
   defaults,
   onSaved,
+  startToday,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,6 +32,8 @@ export function TaskEditor({
   task?: Task | null;
   defaults?: Partial<Task>;
   onSaved?: (task: Task) => void;
+  /** Bật sẵn "Làm ngay hôm nay" khi thêm việc mới */
+  startToday?: boolean;
 }) {
   const goals = useStore((s) => s.goals);
   const cycles = useStore((s) => s.cycles);
@@ -64,7 +67,7 @@ export function TaskEditor({
     setReason(src.leverage_reason ?? '');
     setSource(src.leverage_source ?? 'manual');
     setImportant(src.important ?? false);
-    setDoToday(false);
+    setDoToday(!task && !!startToday);
     setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task?.id]);
@@ -293,7 +296,22 @@ export function TaskEditor({
 // ------------------------------------------------------------
 // Mục tiêu 12 tuần
 // ------------------------------------------------------------
-export function GoalEditor({ open, onClose, goal, visionId, hidePlant }: { open: boolean; onClose: () => void; goal?: Goal | null; visionId?: string; hidePlant?: boolean }) {
+export function GoalEditor({
+  open,
+  onClose,
+  goal,
+  visionId,
+  hidePlant,
+  defaults,
+}: {
+  open: boolean;
+  onClose: () => void;
+  goal?: Goal | null;
+  visionId?: string;
+  hidePlant?: boolean;
+  /** Điền sẵn khi thêm mới (mục tiêu mẫu để tập làm quen) */
+  defaults?: { title: string; measure: string } | null;
+}) {
   const visions = useStore((s) => s.visions);
   const cycles = useStore((s) => s.cycles);
   const goals = useStore((s) => s.goals);
@@ -308,14 +326,14 @@ export function GoalEditor({ open, onClose, goal, visionId, hidePlant }: { open:
 
   useEffect(() => {
     if (!open) return;
-    setTitle(goal?.title ?? '');
+    setTitle(goal?.title ?? defaults?.title ?? '');
     setVision(goal?.vision_id ?? visionId ?? (visions.length === 1 ? visions[0].id : ''));
-    setMeasure(goal?.measure ?? '');
+    setMeasure(goal?.measure ?? defaults?.measure ?? '');
     setDue(goal?.due_date ?? cycle?.end_date ?? null);
     setPlant(goal?.plant ?? nextPlant(goals));
     setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, goal?.id]);
+  }, [open, goal?.id, defaults?.title]);
 
   const activeCount = goals.filter((g) => g.status === 'active' && cycle && g.cycle_id === cycle.id).length;
 
