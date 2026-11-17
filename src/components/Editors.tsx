@@ -1,13 +1,15 @@
 // Các bảng thêm/sửa: đầu việc, mục tiêu 12 tuần, mục tiêu dài hạn.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Zap } from 'lucide-react';
+import { Sparkles, Trash2, Zap } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { getActiveCycle } from '@/lib/logic';
 import { todayISO, WEEKDAY_SHORT } from '@/lib/dates';
 import type { Goal, PlantSpecies, Task, Vision } from '@/lib/types';
 import { Button, Chip, cx, Field, Sheet, Switch } from './ui';
 import { DateField, PlantPicker, Segmented } from './pickers';
+import { AIButton, AlignCheck, PhraseHelper } from './AI';
+import { useAI } from '@/lib/ai';
 
 export const AREAS = ['Học tập', 'Sự nghiệp', 'Sức khỏe', 'Tài chính', 'Các mối quan hệ', 'Phát triển bản thân'];
 const ESTIMATES = [15, 30, 45, 60, 90, 120];
@@ -43,6 +45,7 @@ export function TaskEditor({
   const [estimate, setEstimate] = useState(30);
   const [leverage, setLeverage] = useState<Task['leverage']>('normal');
   const [reason, setReason] = useState('');
+  const [source, setSource] = useState<Task['leverage_source']>('manual');
   const [important, setImportant] = useState(false);
   const [doToday, setDoToday] = useState(false);
   const [error, setError] = useState('');
@@ -59,11 +62,33 @@ export function TaskEditor({
     setEstimate(src.estimate_min ?? 30);
     setLeverage(src.leverage ?? 'normal');
     setReason(src.leverage_reason ?? '');
+    setSource(src.leverage_source ?? 'manual');
     setImportant(src.important ?? false);
     setDoToday(false);
     setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task?.id]);
+
+  const ai = useAI();
+  /** AI gắn nhãn 20/80 kèm lý do cho việc đang soạn */
+  const aiLabel = async () => {
+    if (!title.trim()) return setError('Nhập tên việc trước để AI xem xét.');
+    setError('');
+    const { result } = await ai.run('label', { items: [{ title: title.trim(), goal_id: goalId || null, kind, estimate_min: estimate }] });
+    const l = result?.labels[0];
+    if (!l) return;
+    setLeverage(l.leverage);
+    setReason(l.reason);
+    setSource('ai');
+  };
+  /** Chọn nhãn bằng tay */
+  const pickLeverage = (v: Task['leverage']) => {
+    if (v !== leverage) {
+      setLeverage(v);
+      if (source === 'ai') setReason('');
+    }
+    setSource('manual');
+  };
 
   const toggleDay = (d: number) => setWeekdays((w) => (w.includes(d) ? w.filter((x) => x !== d) : [...w, d].sort()));
 
@@ -80,8 +105,8 @@ export function TaskEditor({
       due_date: kind === 'once' ? due : null,
       estimate_min: Math.max(5, Math.min(600, estimate || 30)),
       leverage,
-      leverage_reason: leverage === 'high' ? reason.trim() : '',
-      leverage_source: (task && task.leverage === leverage ? task.leverage_source : 'manual') as Task['leverage_source'],
+      leverage_reason: leverage === 'high' || source === 'ai' ? reason.trim() : '',
+      leverage_source: source,
       important: kind === 'once' && !!due && important,
     };
     let saved: Task | null;
@@ -214,12 +239,17 @@ export function TaskEditor({
         </div>
 
         <div>
-          <span className="mb-1.5 block text-sm font-semibold">Việc này thuộc nhóm nào?</span>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold">Việc này thuộc nhóm nào?</span>
+            <AIButton busy={!!ai.busy} onClick={aiLabel} variant="ghost" className="-mr-2">
+              AI gợi ý nhãn
+            </AIButton>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               aria-pressed={leverage === 'high'}
-              onClick={() => setLeverage('high')}
+              onClick={() => pickLeverage('high')}
               className={cx('rounded-2xl border-2 p-3 text-left transition', leverage === 'high' ? 'border-high bg-highsoft' : 'border-line bg-surface')}
             >
               <span className="flex items-center gap-1 text-sm font-bold text-high">
@@ -230,21 +260,26 @@ export function TaskEditor({
             <button
               type="button"
               aria-pressed={leverage === 'normal'}
-              onClick={() => setLeverage('normal')}
+              onClick={() => pickLeverage('normal')}
               className={cx('rounded-2xl border-2 p-3 text-left transition', leverage === 'normal' ? 'border-primary bg-soft' : 'border-line bg-surface')}
             >
               <span className="text-sm font-bold text-ink">Việc 80%</span>
               <span className="mt-0.5 block text-[13px] leading-snug text-muted">Cần làm nhưng ít tác động hơn. Tưới +1 💧</span>
             </button>
           </div>
-          {leverage === 'high' && (
+          {source === 'ai' && reason && (
+            <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-muted">
+              <Sparkles size={13} /> Nhãn do AI gợi ý, bạn vẫn đổi được. Lý do:
+            </p>
+          )}
+          {(leverage === 'high' || (source === 'ai' && reason)) && (
             <textarea
               className="k-input mt-2 resize-none"
               rows={2}
               maxLength={400}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Vì sao đây là việc đòn bẩy cao? (không bắt buộc)"
+              placeholder={leverage === 'high' ? 'Vì sao đây là việc đòn bẩy cao? (không bắt buộc)' : 'Lý do (không bắt buộc)'}
             />
           )}
         </div>
@@ -346,9 +381,20 @@ export function GoalEditor({ open, onClose, goal, visionId, hidePlant }: { open:
         <Field label="Đo bằng gì?" hint="Mục tiêu cần đo được, ví dụ: điểm thi thử từ 6.5, chạy 5 km không dừng.">
           <input className="k-input" value={measure} onChange={(e) => setMeasure(e.target.value)} maxLength={300} placeholder="Con số hoặc kết quả cụ thể" />
         </Field>
+        <PhraseHelper
+          target="goal"
+          text={title}
+          detail={measure}
+          visionId={vision}
+          onPick={(o) => {
+            setTitle(o.title);
+            if (o.detail) setMeasure(o.detail);
+          }}
+        />
         <Field label="Ngày hoàn thành">
           <DateField value={due} onChange={setDue} min={cycle?.start_date} max={cycle?.end_date} />
         </Field>
+        <AlignCheck goalId={goal?.id} title={title} measure={measure} dueDate={due} visionId={vision} />
         {!hidePlant && (
           <div>
             <span className="mb-1.5 block text-sm font-semibold">Cây đại diện trong Vườn</span>
@@ -444,6 +490,18 @@ export function VisionFields(p: {
       <Field label="3–5 năm nữa, bạn muốn điều gì thành sự thật?">
         <textarea className="k-input resize-none" rows={2} maxLength={300} value={p.title} onChange={(e) => p.setTitle(e.target.value)} placeholder="Ví dụ: Du học thạc sĩ và dùng tiếng Anh tự tin" />
       </Field>
+      <div className="-mt-2">
+        <PhraseHelper
+          target="vision"
+          text={p.title}
+          detail={p.description}
+          area={p.area}
+          onPick={(o) => {
+            p.setTitle(o.title);
+            if (o.detail) p.setDescription(o.detail);
+          }}
+        />
+      </div>
       <div>
         <span className="mb-1.5 block text-sm font-semibold">Thuộc lĩnh vực nào?</span>
         <div className="flex flex-wrap gap-1.5">

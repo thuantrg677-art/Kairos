@@ -14,6 +14,8 @@ import { TaskRow } from '@/components/TaskRow';
 import { Timeline } from '@/components/Timeline';
 import { TaskEditor } from '@/components/Editors';
 import { useInboxCount } from '@/components/AppShell';
+import { AIButton, QuotaHint } from '@/components/AI';
+import { useAI } from '@/lib/ai';
 
 export default function Today() {
   const d = useData();
@@ -24,6 +26,8 @@ export default function Today() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [adding, setAdding] = useState(false);
   const [showOthers, setShowOthers] = useState(false);
+  const [aiNote, setAiNote] = useState('');
+  const ai = useAI();
 
   // Cập nhật vạch "bây giờ" mỗi phút
   useEffect(() => {
@@ -55,7 +59,7 @@ export default function Today() {
   const st = useStore.getState();
 
   /** Đặt giờ cho một việc (tạo mới hoặc cập nhật khối lịch của hôm nay) */
-  const place = (taskId: string, start_min: number, duration_min: number, source: 'manual' | 'auto') => {
+  const place = (taskId: string, start_min: number, duration_min: number, source: 'manual' | 'auto' | 'ai') => {
     const block = d.schedule_blocks.find((b) => b.task_id === taskId && b.date === today);
     if (block) st.update('schedule_blocks', block.id, { start_min, duration_min, source });
     else st.insert('schedule_blocks', { task_id: taskId, date: today, start_min, duration_min, source });
@@ -70,8 +74,37 @@ export default function Today() {
     else st.remove('schedule_blocks', blockId);
   };
 
-  const arrangeAll = () => {
+  /** AI xếp lịch; nếu AI không dùng được (hết lượt, chưa bật, offline…) thì xếp theo quy tắc */
+  const aiArrange = async () => {
+    const from = Math.max(now, range.start);
+    const { result, error } = await ai.run(
+      'schedule',
+      {
+        now_min: from,
+        free: free.filter((f) => f.end > from).map((f) => ({ start: Math.max(f.start, from), end: f.end })),
+        fixed: fixedToday.map((e) => ({ title: e.title, start: e.start_min, end: e.end_min })),
+        items: unscheduled.map((i) => ({ id: i.task.id, title: i.task.title, leverage: i.task.leverage, estimate_min: i.task.estimate_min, due_date: i.task.due_date, goal_id: i.task.goal_id })),
+      },
+      { silent: true },
+    );
+    if (!result) {
+      if (error?.code === 'no_space' || error?.code === 'bad_request') return st.toast(error.message);
+      st.toast(`${error?.message ?? 'AI chưa trả lời được.'} Mình xếp theo quy tắc thay nhé.`);
+      setAiNote('');
+      return arrangeAll(true);
+    }
+    result.placed.forEach((p) => place(p.task_id, p.start_min, p.duration_min, 'ai'));
+    setAiNote(result.note);
+    if (result.placed.length === 0) st.toast('AI chưa tìm được chỗ hợp lý cho việc nào. Hôm nay khá kín rồi.');
+    else st.toast(`AI đã xếp ${result.placed.length} việc${result.left.length ? `, để lại ${result.left.length} việc chưa có chỗ` : ''}.`, 'success');
+  };
+
+  const arrangeAll = (quiet = false) => {
     const { placed, left } = autoArrange(items, free, Math.max(now, range.start));
+    if (quiet) {
+      placed.forEach((p) => place(p.task_id, p.start_min, p.duration_min, 'auto'));
+      return;
+    }
     placed.forEach((p) => place(p.task_id, p.start_min, p.duration_min, 'auto'));
     if (placed.length === 0 && left.length === 0) st.toast('Không còn việc nào cần xếp giờ.');
     else if (left.length > 0)
@@ -204,13 +237,24 @@ export default function Today() {
                 Còn trống hôm nay
                 <span className="block text-lg leading-tight font-bold text-ink">{formatDuration(freeLeft)}</span>
               </p>
-              <Button size="sm" onClick={arrangeAll} disabled={unscheduled.length === 0}>
-                <Wand2 size={16} /> Tự xếp việc
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => arrangeAll()} disabled={unscheduled.length === 0 || !!ai.busy}>
+                  <Wand2 size={16} /> Tự xếp
+                </Button>
+                <AIButton variant="primary" busy={!!ai.busy} onClick={aiArrange} disabled={unscheduled.length === 0}>
+                  AI xếp lịch
+                </AIButton>
+              </div>
             </div>
             <p className="mb-4 text-[13px] leading-snug text-muted">
-              Việc 20% được xếp vào khung sớm nhất. Kéo tay nắm <span aria-hidden>⋮⋮</span> bên phải mỗi việc để đổi giờ.
+              <b>Tự xếp</b> đặt việc 20% vào khung sớm nhất. <b>AI xếp lịch</b> còn tính đến hạn chót, độ dài khung trống và lúc bạn tỉnh táo. Kéo tay nắm <span aria-hidden>⋮⋮</span> bên phải mỗi việc để đổi giờ.
             </p>
+            {aiNote && (
+              <div className="k-fade-in mb-4 rounded-2xl bg-soft px-3.5 py-2.5 text-[13px] leading-snug text-ink">
+                <p>💡 {aiNote}</p>
+                <QuotaHint className="mt-1" />
+              </div>
+            )}
             <Timeline
               range={range}
               fixed={fixedToday}

@@ -2,7 +2,7 @@
 // 1. Mục tiêu dài hạn → 2. Mục tiêu 12 tuần → 3. Lịch cố định → 4. Chọn cây + giao diện.
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Pencil, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Pencil, Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useData, useStore } from '@/lib/store';
 import { addDays, formatDM, formatDMY, mondayOf, todayISO } from '@/lib/dates';
@@ -143,9 +143,6 @@ export default function Onboarding() {
                 <Button variant="soft" onClick={addVision} disabled={!title.trim()}>
                   <Plus size={18} /> {d.visions.length ? 'Thêm mục tiêu dài hạn nữa' : 'Thêm mục tiêu dài hạn'}
                 </Button>
-                <Button variant="ghost" disabled title="Có ở giai đoạn 2">
-                  <Sparkles size={18} /> AI giúp diễn đạt (sắp có)
-                </Button>
               </div>
             </Card>
           </>
@@ -190,7 +187,7 @@ export default function Onboarding() {
             <Button variant={goals.length ? 'soft' : 'primary'} className="mt-3 w-full" onClick={() => setGoalOpen(true)}>
               <Plus size={18} /> {goals.length ? `Thêm mục tiêu thứ ${goals.length + 1}` : 'Thêm mục tiêu 12 tuần đầu tiên'}
             </Button>
-            <p className="mt-3 text-[13px] leading-relaxed text-muted">Mỗi mục tiêu phải gắn với một mục tiêu dài hạn, đo được và có ngày hoàn thành. Ở giai đoạn 2, AI sẽ nhận xét mức độ liên kết này.</p>
+            <p className="mt-3 text-[13px] leading-relaxed text-muted">Mỗi mục tiêu phải gắn với một mục tiêu dài hạn, đo được và có ngày hoàn thành. Khi thêm hoặc sửa mục tiêu, bấm ✨ <b>AI nhận xét mức liên kết</b> để xem mục tiêu đã rõ và nối đúng với mục tiêu dài hạn chưa.</p>
             <GoalEditor open={goalOpen} onClose={() => setGoalOpen(false)} hidePlant />
             <GoalEditor open={!!editGoal} onClose={() => setEditGoal(null)} goal={editGoal} hidePlant />
           </>

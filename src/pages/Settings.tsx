@@ -10,6 +10,7 @@ import { isDark } from '@/lib/themes';
 import { Button, Card, Field, IconButton } from '@/components/ui';
 import { DarkModePicker, ThemePicker } from '@/components/pickers';
 import { FixedScheduleEditor } from '@/components/FixedScheduleEditor';
+import { AIStatus } from '@/components/AI';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -107,6 +108,10 @@ export default function Settings() {
           )}
         </Section>
 
+        <Section title="Trợ lý AI">
+          <AIStatus />
+        </Section>
+
         <Section title="Thông báo">
           <p className="text-sm leading-relaxed text-muted">Tóm tắt buổi sáng, nhắc viết nhật ký và nhắc deadline trước 7, 3, 1 ngày sẽ có ở giai đoạn 4.</p>
         </Section>
@@ -143,7 +148,7 @@ export default function Settings() {
           )}
         </Section>
 
-        <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 1 · Focus on what matters</p>
+        <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 2a · Focus on what matters</p>
       </div>
     </div>
   );

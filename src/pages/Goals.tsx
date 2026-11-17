@@ -12,6 +12,7 @@ import { Plant, plantIsTree } from '@/components/Plant';
 import { PlantBadge } from '@/components/pickers';
 import { TaskRow } from '@/components/TaskRow';
 import { GoalEditor, TaskEditor, VisionEditor } from '@/components/Editors';
+import { SuggestTasksSheet } from '@/components/AI';
 
 export default function Goals() {
   const d = useData();
@@ -24,6 +25,7 @@ export default function Goals() {
   const [taskSheet, setTaskSheet] = useState<{ task?: Task; goalId?: string } | null>(null);
   const [goalSheet, setGoalSheet] = useState<{ goal?: Goal; visionId?: string } | null>(null);
   const [visionSheet, setVisionSheet] = useState<{ vision?: Vision } | null>(null);
+  const [suggestFor, setSuggestFor] = useState<Goal | null>(null);
 
   const goals = useMemo(() => d.goals.filter((g) => g.status === 'active' && (!cycle || g.cycle_id === cycle.id)).sort((a, b) => a.sort - b.sort), [d.goals, cycle]);
   const looseTasks = useMemo(() => d.tasks.filter((t) => !t.goal_id && !t.archived_at && !t.done_at), [d.tasks]);
@@ -104,8 +106,8 @@ export default function Goals() {
                             <Button size="sm" onClick={() => setTaskSheet({ goalId: g.id })}>
                               <Plus size={16} /> Thêm đầu việc
                             </Button>
-                            <Button size="sm" variant="outline" disabled title="Có ở giai đoạn 2">
-                              <Sparkles size={16} /> AI gợi ý đầu việc (sắp có)
+                            <Button size="sm" variant="outline" onClick={() => setSuggestFor(g)}>
+                              <Sparkles size={16} /> AI gợi ý đầu việc
                             </Button>
                           </div>
                         </div>
@@ -151,6 +153,7 @@ export default function Goals() {
 
       <TaskEditor open={!!taskSheet} onClose={() => setTaskSheet(null)} task={taskSheet?.task} defaults={{ goal_id: taskSheet?.goalId ?? null, kind: 'recurring' }} />
       <GoalEditor open={!!goalSheet} onClose={() => setGoalSheet(null)} goal={goalSheet?.goal} visionId={goalSheet?.visionId} />
+      <SuggestTasksSheet goal={suggestFor} onClose={() => setSuggestFor(null)} />
       <VisionEditor open={!!visionSheet} onClose={() => setVisionSheet(null)} vision={visionSheet?.vision} />
     </div>
   );

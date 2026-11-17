@@ -10,6 +10,8 @@
 
 👉 **[Hướng dẫn triển khai giai đoạn 1](docs/HUONG-DAN-GD1.md)**: đưa app lên mạng, nối database, bật đăng nhập Google, cài app lên điện thoại và máy tính. Không cần cài gì lên máy.
 
+👉 **[Hướng dẫn bật AI (giai đoạn 2a)](docs/HUONG-DAN-GD2A.md)**: chạy thêm 1 file SQL, lấy khóa Gemini, tạo Edge Function `ai`. Khoảng 15 phút.
+
 Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu mẫu** (không cần tài khoản).
 
 ## Các giai đoạn
@@ -17,13 +19,14 @@ Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu m�
 | Giai đoạn | Nội dung | Trạng thái |
 |---|---|---|
 | 1 | Đăng nhập, onboarding, đầu việc, lịch cố định, Hôm nay, Nháp, 6 theme, PWA | ✅ Xong |
-| 2 | AI gợi ý đầu việc, gắn nhãn 80/20, xếp lịch; Focus + âm thanh + thống kê | Sắp làm |
+| 2a | AI gợi ý đầu việc, gắn nhãn 20/80, diễn đạt mục tiêu, nhận xét liên kết, xếp Nháp, xếp lịch Hôm nay | ✅ Xong (cần bật theo hướng dẫn) |
+| 2b | Focus + âm thanh + thống kê | Sắp làm |
 | 3 | Vườn đầy đủ (héo/hồi phục, kỷ niệm), nhật ký ngày, nhìn lại tuần, AI nhận xét tuần | |
 | 4 | Web Push, nhắc deadline 7/3/1 ngày, Tổng quan đầy đủ, hoàn thiện | |
 
 ## Công nghệ
 
-React 19 · Vite · TypeScript · Tailwind CSS 4 · zustand · Supabase (Auth + Postgres + RLS) · Vercel.
+React 19 · Vite · TypeScript · Tailwind CSS 4 · zustand · Supabase (Auth + Postgres + RLS + Edge Functions) · Gemini API · Vercel.
 
 ## Cấu trúc thư mục
 
@@ -41,10 +44,12 @@ src/
     dates.ts            Ngày giờ kiểu Việt Nam (dd/mm/yyyy, tuần bắt đầu thứ Hai)
     seed.ts             Dữ liệu mẫu
     supabase.ts         Kết nối Supabase
+    ai.ts               Gọi AI qua Edge Function, đếm lượt, báo lỗi dễ hiểu
     themes.ts, pwa.ts   Theme; cài app và cập nhật phiên bản
   components/           Nút, thẻ, bảng trượt, cây/hoa SVG, tranh nền, dòng thời gian, các bảng thêm/sửa
   pages/                Login, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, Settings
-supabase/migrations/    File SQL tạo database (bảng + Row Level Security)
+supabase/migrations/    File SQL tạo database (bảng + Row Level Security), chạy theo thứ tự 001, 002…
+supabase/functions/ai/  Edge Function AI (khóa Gemini chỉ nằm ở đây, trên server)
 docs/                   Hướng dẫn cho từng giai đoạn
 ```
 
