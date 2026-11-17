@@ -92,5 +92,5 @@ Xem lỗi chi tiết: Supabase → **Edge Functions** → `ai` → tab **Logs**.
 
 ## Về dữ liệu gửi cho AI
 
-- Mỗi lần bấm nút AI, server gửi cho Gemini bản tóm tắt: mục tiêu dài hạn, mục tiêu 12 tuần, tên các đầu việc, lịch cố định (khi cần) và nội dung đang hỏi (ví dụ các dòng trong Nháp). **Không gửi email, tên tài khoản hay nhật ký.**
+- Mỗi lần bấm nút AI, server gửi cho Gemini bản tóm tắt: mục tiêu dài hạn, mục tiêu 12 tuần, tên các đầu việc, lịch cố định (khi cần) và nội dung đang hỏi (ví dụ các dòng trong Nháp). **Không gửi email hay tên tài khoản.** Nhật ký chỉ được gửi khi bấm **AI nhận xét tuần** (giai đoạn 3), và chỉ nhật ký của tuần đó.
 - Với gói miễn phí, Google có thể dùng dữ liệu gửi lên để cải thiện sản phẩm của họ. Nên nói rõ điều này với người dùng thử, và nhắc họ không ghi thông tin nhạy cảm vào Nháp khi dùng AI.

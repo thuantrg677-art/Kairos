@@ -16,6 +16,8 @@ import { TaskEditor } from '@/components/Editors';
 import { useInboxCount } from '@/components/AppShell';
 import { AIButton, QuotaHint } from '@/components/AI';
 import { useAI } from '@/lib/ai';
+import { JournalCard, WeekReviewPrompt } from '@/components/Journal';
+import { CycleEndBanner } from '@/components/CycleWrap';
 
 export default function Today() {
   const d = useData();
@@ -157,6 +159,10 @@ export default function Today() {
             </div>
           </div>
 
+          <div className="mb-4 empty:hidden">
+            <CycleEndBanner />
+          </div>
+
           <SectionTitle
             action={
               <Button size="sm" variant="soft" onClick={() => setAdding(true)}>
@@ -226,6 +232,11 @@ export default function Today() {
               )}
             </div>
           )}
+
+          <div className="mt-5 flex flex-col gap-3">
+            <WeekReviewPrompt />
+            <JournalCard />
+          </div>
         </section>
 
         {/* Cột phải: dòng thời gian */}

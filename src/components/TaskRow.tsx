@@ -7,6 +7,7 @@ import { describeDue, formatDuration, minToHM, todayISO, WEEKDAY_SHORT } from '@
 import type { Goal, ScheduleBlock, Task } from '@/lib/types';
 import { cx, LeverageBadge } from './ui';
 import { Plant } from './Plant';
+import { announceGrowth, plantSnapshot } from '@/lib/garden';
 
 /** Mô tả lịch lặp: "Hằng ngày", "T2 · T4 · T6" */
 export function repeatLabel(weekdays: number[]): string {
@@ -44,8 +45,10 @@ export function TaskRow({
 
   const toggle = () => {
     if (!date) return;
+    const before = plantSnapshot(task.goal_id);
     const points = useStore.getState().toggleTask(task, date);
     if (points > 0) {
+      announceGrowth(before);
       // Hiệu ứng tưới nước: 3 giọt cho việc 20%, 1 giọt cho việc 80%
       setBurst(points);
       setTimeout(() => setBurst(0), 950);

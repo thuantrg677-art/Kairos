@@ -281,6 +281,21 @@ function Pine({ stage }: { stage: number }) {
   );
 }
 
+/** Lá rụng nằm dưới gốc khi cây héo rõ */
+function FallenLeaves() {
+  return (
+    <g opacity={0.85}>
+      <Leaf x={36} y={127} len={11} w={4} rot={-100} fill={C.trunk} />
+      <Leaf x={86} y={129} len={9} w={3.5} rot={78} fill={C.petalShade} />
+      <Leaf x={74} y={131} len={8} w={3.2} rot={110} fill={C.trunk} />
+    </g>
+  );
+}
+
+const WILT_FILTER = ['', 'saturate(0.6) sepia(0.15) brightness(0.98)', 'saturate(0.38) sepia(0.38) brightness(0.95)'];
+/** Cây héo thì rũ xuống: ngả sang một bên và thấp đi một chút, gốc và đất giữ nguyên */
+const WILT_DROOP = ['', 'translate(60 128) skewX(-7) scale(1 0.96) translate(-60 -128)', 'translate(60 128) skewX(-15) scale(1 0.88) translate(-60 -128)'];
+
 export function Plant({
   species,
   stage,
@@ -291,7 +306,7 @@ export function Plant({
 }: {
   species: PlantSpecies;
   stage: number;
-  /** 0 = tươi, 1 = hơi héo, 2 = héo rõ (dùng ở giai đoạn 3) */
+  /** 0 = tươi, 1 = hơi héo (3 ngày chưa tưới), 2 = héo rõ (7 ngày) */
   wilt?: 0 | 1 | 2;
   size?: number;
   className?: string;
@@ -306,6 +321,9 @@ export function Plant({
   else if (species === 'linh-lan') body = <LilyOfValley stage={st} />;
   else if (species === 'tan-tron') body = <RoundTree stage={st} />;
   else body = <Pine stage={st} />;
+  // Hạt giống nằm dưới đất nên không rũ; từ lúc nảy mầm trở đi mới thấy héo
+  const droop = st > 0 ? WILT_DROOP[wilt] : '';
+  const wiltName = wilt === 2 ? ', đang héo' : wilt === 1 ? ', hơi héo' : '';
 
   return (
     <svg
@@ -314,12 +332,13 @@ export function Plant({
       height={(size * 140) / 120}
       className={className}
       role="img"
-      aria-label={`${plantName(species)}, giai đoạn ${st + 1} trên 5`}
-      style={wilt ? { filter: `saturate(${wilt === 1 ? 0.65 : 0.35}) brightness(0.96)` } : undefined}
+      aria-label={`${plantName(species)}, giai đoạn ${st + 1} trên 5${wiltName}`}
+      style={wilt ? { filter: WILT_FILTER[wilt], transition: 'filter .6s' } : { transition: 'filter .6s' }}
     >
-      <g className={sway ? 'k-sway' : undefined} style={{ transformOrigin: '60px 128px', transformBox: 'view-box' }}>
-        {body}
+      <g className={sway && wilt < 2 ? 'k-sway' : undefined} style={{ transformOrigin: '60px 128px', transformBox: 'view-box' }}>
+        <g transform={droop || undefined}>{body}</g>
       </g>
+      {wilt === 2 && st >= 2 && <FallenLeaves />}
     </svg>
   );
 }

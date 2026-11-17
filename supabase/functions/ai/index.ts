@@ -1,5 +1,5 @@
 // ============================================================
-// KAIROS · Edge Function "ai" (giai đoạn 2a)
+// KAIROS · Edge Function "ai" (giai đoạn 2a, thêm "AI nhận xét tuần" ở giai đoạn 3)
 //
 // Cách tạo: Supabase → Edge Functions → Deploy a new function → Via Editor
 //           → đặt tên đúng là  ai  → xóa code mẫu, dán TOÀN BỘ file này → Deploy.
@@ -547,6 +547,97 @@ Quy tắc:
   return { placed, left, note: str(out.note, 400) };
 }
 
+/** AI nhận xét một tuần: số liệu do app tính sẵn, nhật ký và phần tự nhìn lại đọc từ database */
+async function weeklyReview({ db, uid, today, body }: Env) {
+  const week = isoDate(body.week_start);
+  if (!week || isoWeekday(week) !== 1 || week > today) throw new UserError('bad_request', 'Tuần cần nhìn lại không hợp lệ.');
+  const end = addDays(week, 6);
+  const until = end < today ? end : today;
+  const ctx = await buildContext(db, uid, today);
+
+  const [journals, review] = await Promise.all([
+    db.from('journals').select('date,energy,did,improve').eq('user_id', uid).gte('date', week).lte('date', end).order('date'),
+    db.from('weekly_reviews').select('*').eq('user_id', uid).eq('week_start', week).maybeSingle(),
+  ]);
+  if (journals.error) throw journals.error;
+
+  // Số liệu từ app: làm sạch trước khi đưa vào prompt
+  const st = isObj(body.stats) ? body.stats : {};
+  const planned = int(st.planned, 0, 2000, 0);
+  const done = Math.min(planned, int(st.done, 0, 2000, 0));
+  const drops = int(st.drops, 0, 20000, 0);
+  const focusMin = int(st.focus_min, 0, 20000, 0);
+  const highMin = int(st.high_min, 0, 20000, 0);
+  const normalMin = int(st.normal_min, 0, 20000, 0);
+  const goals = arr(body.goals)
+    .filter(isObj)
+    .slice(0, 10)
+    .map((g) => ({ ref: ctx.goalIdToRef.get(str(g.goal_id, 64)), planned: int(g.planned, 0, 500, 0), done: int(g.done, 0, 500, 0), drops: int(g.drops, 0, 5000, 0), wilt: int(g.dry_days, 0, 99, 0) }))
+    .filter((g) => g.ref);
+  const missed = arr(body.missed)
+    .filter(isObj)
+    .slice(0, 5)
+    .map((m) => ({ title: str(m.title, 120), missed: int(m.missed, 1, 50, 1) }))
+    .filter((m) => m.title);
+  const days = arr(body.days)
+    .filter(isObj)
+    .slice(0, 7)
+    .map((x) => ({ date: isoDate(x.date), planned: int(x.planned, 0, 200, 0), done: int(x.done, 0, 200, 0), focus: int(x.focus_min, 0, 1440, 0) }))
+    .filter((x) => x.date && x.date >= week && x.date <= until);
+  if (planned === 0 && drops === 0 && focusMin === 0 && !(journals.data ?? []).length) {
+    throw new UserError('bad_request', 'Tuần này chưa có dữ liệu để nhận xét. Hãy làm vài việc hoặc viết nhật ký trước nhé.');
+  }
+
+  const ENERGY = ['', 'kiệt sức', 'hơi mệt', 'bình thường', 'khá tốt', 'tràn đầy'];
+  const jLines = (journals.data ?? []).map(
+    (j) => `- ${WD_SHORT[isoWeekday(j.date) - 1]} ${dm(j.date)}${j.energy ? ` (năng lượng ${j.energy}/5, ${ENERGY[j.energy]})` : ''}: đã làm "${str(j.did, 400) || '…'}"; muốn làm tốt hơn "${str(j.improve, 200) || '…'}"`,
+  );
+  // Phần tự nhìn lại: ưu tiên nội dung app gửi kèm (có thể chưa kịp lưu), không có thì đọc từ database
+  const r = isObj(body.notes) ? body.notes : isObj(review.data) ? review.data : {};
+  const self = [
+    str(r.wins, 400) && `- Điều làm tốt: "${str(r.wins, 400)}"`,
+    str(r.lessons, 400) && `- Điều chưa ổn: "${str(r.lessons, 400)}"`,
+    str(r.next_focus, 400) && `- Tuần tới muốn tập trung: "${str(r.next_focus, 400)}"`,
+  ].filter(Boolean);
+
+  const prompt = `${ctx.text}
+
+NHIỆM VỤ: Nhận xét tuần ${dmy(week)} – ${dmy(end)}${until < end ? ` (tuần chưa hết, số liệu tính đến ${dmy(until)})` : ''} của người dùng, như một người hướng dẫn tận tâm theo tinh thần The 12 Week Year.
+SỐ LIỆU TUẦN:
+- Điểm thực thi: ${done}/${planned} lượt việc theo kế hoạch (${planned ? Math.round((done / planned) * 100) : 0}%; mục tiêu của 12 Week Year là từ 85%).
+- Tổng ${drops} 💧 đã tưới; focus ${focusMin} phút (cho Việc 20%: ${highMin} phút, Việc 80%: ${normalMin} phút).
+- Theo mục tiêu: ${goals.length ? goals.map((g) => `${g.ref} làm ${g.done}/${g.planned} lượt, ${g.drops} 💧${g.wilt >= 3 ? `, cây đã ${g.wilt} ngày chưa được tưới` : ''}`).join('; ') : '(không có)'}.
+- Theo ngày: ${days.length ? days.map((x) => `${WD_SHORT[isoWeekday(x.date!) - 1]} ${x.done}/${x.planned} việc, focus ${x.focus}′`).join('; ') : '(không có)'}.
+- Việc 20% bị bỏ lỡ nhiều nhất: ${missed.length ? missed.map((m) => `"${m.title}" (${m.missed} lần)`).join('; ') : 'không có'}.
+NHẬT KÝ TRONG TUẦN:
+${jLines.length ? jLines.join('\n') : '- (không viết nhật ký)'}
+TỰ NHÌN LẠI CỦA NGƯỜI DÙNG:
+${self.length ? self.join('\n') : '- (chưa viết)'}
+
+Trả lời:
+- "headline": một câu tóm tắt tuần (tối đa 90 ký tự), trung thực, không tâng bốc.
+- "went_well": 1–3 điểm làm tốt, dựa trên số liệu hoặc nhật ký cụ thể.
+- "improve": 1–3 điểm cần cải thiện, chỉ ra nguyên nhân có thể (dựa trên nhật ký, năng lượng, ngày bị trống, Việc 20% bị bỏ lỡ).
+- "next_steps": 2–3 hành động cụ thể cho tuần tới, mỗi hành động bắt đầu bằng động từ, gắn với mục tiêu và lịch của người dùng.
+- "encouragement": một câu động viên ngắn, chân thành.
+Mỗi ý tối đa 30 chữ. Không lặp lại nguyên văn nhật ký. Nếu người dùng mệt nhiều ngày, nhắc nhẹ về nghỉ ngơi thay vì ép làm thêm.`;
+
+  const out = await gemini(
+    prompt,
+    S.obj({ headline: S.str(), went_well: S.arr(S.str()), improve: S.arr(S.str()), next_steps: S.arr(S.str()), encouragement: S.str() }),
+  );
+  const list = (v: unknown, n: number) => arr(v).map((x) => str(x, 300)).filter(Boolean).slice(0, n);
+  const result = {
+    headline: str(out.headline, 160),
+    went_well: list(out.went_well, 3),
+    improve: list(out.improve, 3),
+    next_steps: list(out.next_steps, 3),
+    encouragement: str(out.encouragement, 240),
+  };
+  if (!result.headline && !result.next_steps.length) throw new Error('Không có nhận xét hợp lệ');
+  return result;
+}
+
 const ACTIONS: Record<string, (env: Env) => Promise<unknown>> = {
   suggest_tasks: suggestTasks,
   label: labelTasks,
@@ -554,6 +645,7 @@ const ACTIONS: Record<string, (env: Env) => Promise<unknown>> = {
   align,
   inbox,
   schedule,
+  weekly_review: weeklyReview,
 };
 
 // ------------------------------------------------------------

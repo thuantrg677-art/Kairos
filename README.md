@@ -12,6 +12,8 @@
 
 👉 **[Hướng dẫn bật AI (giai đoạn 2a)](docs/HUONG-DAN-GD2A.md)**: chạy thêm 1 file SQL, lấy khóa Gemini, tạo Edge Function `ai`. Khoảng 15 phút.
 
+👉 **[Hướng dẫn giai đoạn 3](docs/HUONG-DAN-GD3.md)**: chạy 1 file SQL nhỏ và cập nhật code Edge Function `ai`. Khoảng 5 phút.
+
 Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu mẫu** (không cần tài khoản).
 
 ## Các giai đoạn
@@ -20,8 +22,8 @@ Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu m�
 |---|---|---|
 | 1 | Đăng nhập, onboarding, đầu việc, lịch cố định, Hôm nay, Nháp, 6 theme, PWA | ✅ Xong |
 | 2a | AI gợi ý đầu việc, gắn nhãn 20/80, diễn đạt mục tiêu, nhận xét liên kết, xếp Nháp, xếp lịch Hôm nay | ✅ Xong (cần bật theo hướng dẫn) |
-| 2b | Focus + âm thanh + thống kê | Sắp làm |
-| 3 | Vườn đầy đủ (héo/hồi phục, kỷ niệm), nhật ký ngày, nhìn lại tuần, AI nhận xét tuần | |
+| 2b | Focus + âm thanh + thống kê | ✅ Xong |
+| 3 | Vườn đầy đủ (héo/hồi phục, kỷ niệm), nhật ký ngày, nhìn lại tuần, AI nhận xét tuần, lịch sử dạng lịch | ✅ Xong (cần làm theo hướng dẫn GĐ3) |
 | 4 | Web Push, nhắc deadline 7/3/1 ngày, Tổng quan đầy đủ, hoàn thiện | |
 
 ## Công nghệ
@@ -41,13 +43,15 @@ src/
     types.ts            Kiểu dữ liệu (trùng tên cột trong database)
     store.ts            Kho dữ liệu: tải, lưu, đồng bộ, chế độ xem thử
     logic.ts            Việc của ngày, thứ tự ưu tiên, điểm 💧, khung trống, tự xếp việc, điểm tuần
+    garden.ts           Cây héo/hồi phục, hiệu ứng lên giai đoạn, kết thúc chu kỳ, Khu vườn kỷ niệm
+    review.ts           Số liệu nhật ký ngày, nhìn lại tuần, lịch sử dạng lịch
     dates.ts            Ngày giờ kiểu Việt Nam (dd/mm/yyyy, tuần bắt đầu thứ Hai)
     seed.ts             Dữ liệu mẫu
     supabase.ts         Kết nối Supabase
     ai.ts               Gọi AI qua Edge Function, đếm lượt, báo lỗi dễ hiểu
     themes.ts, pwa.ts   Theme; cài app và cập nhật phiên bản
   components/           Nút, thẻ, bảng trượt, cây/hoa SVG, tranh nền, dòng thời gian, các bảng thêm/sửa
-  pages/                Login, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, Settings
+  pages/                Login, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, WeekReview, JournalPage, History, Settings
 supabase/migrations/    File SQL tạo database (bảng + Row Level Security), chạy theo thứ tự 001, 002…
 supabase/functions/ai/  Edge Function AI (khóa Gemini chỉ nằm ở đây, trên server)
 docs/                   Hướng dẫn cho từng giai đoạn

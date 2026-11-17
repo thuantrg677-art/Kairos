@@ -7,7 +7,7 @@ import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@s
 import { supabase } from './supabase';
 import { useStore } from './store';
 import { todayISO } from './dates';
-import type { Task } from './types';
+import type { AIWeekReview, Task } from './types';
 
 // ---------- Kiểu dữ liệu trả về của từng tác vụ ----------
 export interface AITask {
@@ -27,6 +27,7 @@ export interface AIResults {
   align: { score: number; verdict: string; comment: string; suggestion: string };
   inbox: { items: ({ item_id: string; tip: string } & ({ action: 'task'; task: AITask & { goal_id: string | null } } | { action: 'note' }))[] };
   schedule: { placed: { task_id: string; start_min: number; duration_min: number }[]; left: string[]; note: string };
+  weekly_review: Omit<AIWeekReview, 'at'>;
 }
 export type AIAction = keyof AIResults;
 

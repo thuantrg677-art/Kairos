@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bell, Check, ChevronDown, Coffee, Pause, Play, Square } from 'lucide-react';
 import { useData, useStore } from '@/lib/store';
+import { announceGrowth, plantSnapshot } from '@/lib/garden';
 import { BREAKS, fmtClock, PRESETS, useFocus, useFocusClock } from '@/lib/focus';
 import { formatDuration, todayISO } from '@/lib/dates';
 import { itemsForDate, otherOpenTasks, taskPoints } from '@/lib/logic';
@@ -145,8 +146,12 @@ export default function Focus() {
 
   const markDone = () => {
     if (!resultTask) return;
+    const before = plantSnapshot(resultTask.goal_id);
     const pts = useStore.getState().toggleTask(resultTask, today);
-    if (pts > 0) useStore.getState().toast(`Đã xong việc · +${pts} 💧 cho cây${goal ? ` "${goal.title}"` : ''}`, 'success');
+    if (pts > 0) {
+      useStore.getState().toast(`Đã xong việc · +${pts} 💧 cho cây${goal ? ` "${goal.title}"` : ''}`, 'success');
+      announceGrowth(before);
+    }
   };
 
   let status: string;

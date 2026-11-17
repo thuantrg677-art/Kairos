@@ -6,7 +6,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { supabase } from './supabase';
-import { addDays, todayISO } from './dates';
+import { addDays, toISO, todayISO } from './dates';
 import { buildSeed, DEMO_USER, emptySnapshot } from './seed';
 import { taskPoints } from './logic';
 import { TABLE_NAMES, type Profile, type Snapshot, type TableName, type Tables, type Task } from './types';
@@ -34,6 +34,8 @@ interface Store extends Collections {
   online: boolean;
   /** Đang hiển thị dữ liệu lưu tạm vì chưa tải được từ server */
   stale: boolean;
+  /** Database đã có các cột của giai đoạn 3 (003_gd3.sql) chưa */
+  gd3: boolean;
   toasts: Toast[];
 
   init: () => Promise<void>;
@@ -48,6 +50,8 @@ interface Store extends Collections {
   updateProfile: (patch: Partial<Profile>) => void;
   /** Tick / bỏ tick một việc trong ngày. Trả về số 💧 nhận được (0 nếu bỏ tick). */
   toggleTask: (task: Task, date: string) => number;
+  /** Lấy lịch sử tick và focus của một khoảng ngày (để xem các tháng cũ hơn phần đã tải sẵn) */
+  loadRange: (from: string, to: string) => Promise<Pick<Snapshot, 'task_completions' | 'focus_sessions'>>;
 
   toast: (text: string, kind?: Toast['kind']) => void;
   dismissToast: (id: number) => void;
@@ -63,7 +67,13 @@ const EMPTY: Collections = {
   schedule_blocks: [],
   inbox_items: [],
   focus_sessions: [],
+  journals: [],
+  weekly_reviews: [],
 };
+
+/** Dữ liệu tick và focus được tải sẵn từ ngày này trở đi (cũ hơn thì tải khi cần) */
+export const LOADED_DAYS = 100;
+export const loadedSince = () => addDays(todayISO(), -LOADED_DAYS);
 
 function readJSON<T>(key: string): T | null {
   try {
@@ -91,13 +101,14 @@ async function loadCloud(uid: string): Promise<Snapshot> {
     if (created.error) throw created.error;
     profile = created.data;
   }
-  const since = addDays(todayISO(), -100);
+  const since = loadedSince();
   const results = await Promise.all(
     TABLE_NAMES.map((t) => {
       let q = sb.from(t).select('*');
       if (t === 'task_completions') q = q.gte('date', since);
       if (t === 'schedule_blocks') q = q.gte('date', addDays(todayISO(), -14));
       if (t === 'focus_sessions') q = q.gte('started_at', since);
+      if (t === 'journals') q = q.gte('date', addDays(todayISO(), -400));
       return q;
     }),
   );
@@ -107,6 +118,17 @@ async function loadCloud(uid: string): Promise<Snapshot> {
     (snap as unknown as Record<string, unknown>)[TABLE_NAMES[i]] = res.data ?? [];
   });
   return snap;
+}
+
+/** Kiểm tra đã chạy 003_gd3.sql chưa (có cột mới chưa). Lỗi mạng thì coi như đã chạy. */
+async function probeGd3(): Promise<boolean> {
+  const sb = supabase!;
+  const [a, b] = await Promise.all([
+    sb.from('weekly_reviews').select('wins').limit(1),
+    sb.from('goals').select('final_stage').limit(1),
+  ]);
+  const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /column/i.test(e.message ?? ''));
+  return !missing(a.error) && !missing(b.error);
 }
 
 // Các lệnh ghi được gửi lần lượt theo đúng thứ tự (vd tạo mục tiêu xong mới tạo việc của nó)
@@ -152,9 +174,9 @@ export const useStore = create<Store>((set, get) => {
     const cached = readJSON<Snapshot>(cacheKey(uid));
     if (cached) applySnapshot(cached, { stale: true });
     try {
-      const snap = await loadCloud(uid);
+      const [snap, gd3] = await Promise.all([loadCloud(uid), probeGd3().catch(() => true)]);
       lastLoad = Date.now();
-      applySnapshot(snap, { stale: false });
+      applySnapshot(snap, { stale: false, gd3 });
     } catch (err) {
       console.error('[Kairos] Lỗi tải dữ liệu:', err);
       if (!cached) set({ status: 'error' });
@@ -170,6 +192,7 @@ export const useStore = create<Store>((set, get) => {
     email: null,
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     stale: false,
+    gd3: true,
     toasts: [],
 
     init: async () => {
@@ -223,7 +246,7 @@ export const useStore = create<Store>((set, get) => {
     enterDemo: () => {
       localStorage.setItem(MODE_KEY, 'demo');
       const snap = readJSON<Snapshot>(DEMO_KEY) ?? buildSeed();
-      set({ mode: 'demo', userId: DEMO_USER, email: null, stale: false });
+      set({ mode: 'demo', userId: DEMO_USER, email: null, stale: false, gd3: true });
       applySnapshot(snap);
     },
 
@@ -250,9 +273,9 @@ export const useStore = create<Store>((set, get) => {
       if (mode !== 'cloud' || !userId || !online) return;
       try {
         await writeQueue; // chờ các lệnh ghi đang dở xong đã
-        const snap = await loadCloud(userId);
+        const [snap, gd3] = await Promise.all([loadCloud(userId), probeGd3().catch(() => get().gd3)]);
         lastLoad = Date.now();
-        applySnapshot(snap, { stale: false });
+        applySnapshot(snap, { stale: false, gd3 });
       } catch (err) {
         console.error('[Kairos] Lỗi đồng bộ:', err);
       }
@@ -331,6 +354,31 @@ export const useStore = create<Store>((set, get) => {
       return points;
     },
 
+    loadRange: async (from, to) => {
+      const s = get();
+      const local = {
+        task_completions: s.task_completions.filter((c) => c.date >= from && c.date <= to),
+        focus_sessions: s.focus_sessions.filter((f) => {
+          const d = toISO(new Date(f.started_at));
+          return d >= from && d <= to;
+        }),
+      };
+      // Khoảng đã nằm trong phần tải sẵn, hoặc đang xem thử / offline: dùng dữ liệu có sẵn
+      if (s.mode !== 'cloud' || !s.online || !supabase || from >= loadedSince()) return local;
+      const [c, f] = await Promise.all([
+        supabase.from('task_completions').select('*').gte('date', from).lte('date', to),
+        supabase.from('focus_sessions').select('*').gte('started_at', `${addDays(from, -1)}T00:00:00Z`).lte('started_at', `${addDays(to, 1)}T23:59:59Z`),
+      ]);
+      if (c.error || f.error) throw c.error ?? f.error;
+      return {
+        task_completions: c.data ?? [],
+        focus_sessions: (f.data ?? []).filter((x) => {
+          const d = toISO(new Date(x.started_at));
+          return d >= from && d <= to;
+        }),
+      };
+    },
+
     toast: (text, kind = 'info') => {
       const id = ++toastId;
       set((s) => ({ toasts: [...s.toasts.slice(-2), { id, text, kind }] }));
@@ -375,5 +423,7 @@ export const useData = () =>
       schedule_blocks: s.schedule_blocks,
       inbox_items: s.inbox_items,
       focus_sessions: s.focus_sessions,
+      journals: s.journals,
+      weekly_reviews: s.weekly_reviews,
     })),
   );

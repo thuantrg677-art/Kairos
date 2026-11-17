@@ -1,9 +1,9 @@
 // Dữ liệu mẫu cho chế độ "Xem thử": một sinh viên đang ở tuần 5/12.
 // Mọi ngày tháng tính tương đối so với hôm nay nên lúc nào mở cũng thấy hợp lý.
 
-import type { FixedEvent, FocusSession, Goal, Snapshot, Task, TaskCompletion } from './types';
+import type { FixedEvent, FocusSession, Goal, Journal, Snapshot, Task, TaskCompletion, WeeklyReview } from './types';
 import { addDays, isoWeekday, mondayOf, todayISO } from './dates';
-import { CYCLE_DAYS, taskPoints } from './logic';
+import { CYCLE_DAYS, taskPoints, weekStats } from './logic';
 
 export const DEMO_USER = 'demo';
 let n = 0;
@@ -30,6 +30,8 @@ export function emptySnapshot(userId: string, onboarded = false): Snapshot {
     schedule_blocks: [],
     inbox_items: [],
     focus_sessions: [],
+    journals: [],
+    weekly_reviews: [],
   };
 }
 
@@ -47,7 +49,10 @@ export function buildSeed(): Snapshot {
   s.visions = [v1, v2];
 
   const cycle = { id: id('c'), user_id: u, start_date: start, end_date: addDays(start, CYCLE_DAYS - 1), status: 'active' as const, created_at: createdAt };
-  s.cycles = [cycle];
+  // Một chu kỳ đã xong trước đó, để Khu vườn kỷ niệm có sẵn một khu vườn
+  const oldStart = addDays(start, -CYCLE_DAYS);
+  const oldCycle = { id: id('c'), user_id: u, start_date: oldStart, end_date: addDays(start, -1), status: 'done' as const, created_at: `${oldStart}T00:00:00.000Z` };
+  s.cycles = [oldCycle, cycle];
 
   const goal = (title: string, vision_id: string, measure: string, plant: Goal['plant'], sort: number): Goal => ({
     id: id('g'), user_id: u, cycle_id: cycle.id, vision_id, title, measure, due_date: cycle.end_date, plant, status: 'active', sort, created_at: createdAt,
@@ -55,7 +60,18 @@ export function buildSeed(): Snapshot {
   const g1 = goal('Đạt IELTS 6.5', v1.id, 'Điểm thi thử từ 6.5 trở lên', 'sen', 0);
   const g2 = goal('Hoàn thành đồ án môn học đạt 8.5+', v1.id, 'Nộp đúng hạn, điểm từ 8.5', 'linh-lan', 1);
   const g3 = goal('Chạy liên tục 5 km', v2.id, 'Chạy 5 km không dừng', 'tan-tron', 2);
-  s.goals = [g1, g2, g3];
+  const old = (title: string, vision_id: string, measure: string, plant: Goal['plant'], sort: number, final_stage: number, final_earned: number, final_total: number): Goal => ({
+    id: id('g'), user_id: u, cycle_id: oldCycle.id, vision_id, title, measure, due_date: oldCycle.end_date, plant, status: 'done', sort,
+    created_at: oldCycle.created_at, final_stage, final_earned, final_total,
+  });
+  s.goals = [
+    old('Đọc xong 5 cuốn sách tiếng Anh dễ', v1.id, '5 cuốn, mỗi cuốn có ghi chú', 'ly', 0, 4, 142, 168),
+    old('Tập thể dục 3 buổi mỗi tuần', v2.id, 'Đủ 36 buổi', 'thong', 1, 3, 96, 150),
+    old('Đạt GPA học kỳ từ 3.2', v1.id, 'GPA cuối kỳ', 'tan-tron', 2, 2, 51, 140),
+    g1,
+    g2,
+    g3,
+  ];
 
   const task = (g: Goal, title: string, p: Partial<Task>): Task => ({
     id: id('t'), user_id: u, goal_id: g.id, title, kind: 'recurring', weekdays: [], due_date: null, estimate_min: 30,
@@ -86,6 +102,8 @@ export function buildSeed(): Snapshot {
   for (let d = start; d < today; d = addDays(d, 1)) {
     for (const t of s.tasks) {
       if (t.kind !== 'recurring' || !t.weekdays.includes(isoWeekday(d))) continue;
+      // Mục tiêu đồ án bị bỏ bê vài ngày gần đây, để thấy cây "hơi héo"
+      if (t.goal_id === g2.id && d > addDays(today, -5)) continue;
       if (rand() < (t.leverage === 'high' ? 0.8 : 0.6)) {
         completions.push({ id: id('k'), user_id: u, task_id: t.id, date: d, points: taskPoints(t), created_at: `${d}T12:00:00.000Z` });
       }
@@ -130,6 +148,47 @@ export function buildSeed(): Snapshot {
   const inbox = (content: string, daysAgo: number) => ({
     id: id('i'), user_id: u, content, processed_at: null, task_id: null, created_at: `${addDays(today, -daysAgo)}T09:00:00.000Z`,
   });
+  // Nhật ký 10 ngày gần đây
+  const notes: [string, string][] = [
+    ['Làm xong đề Listening, sai ít hơn hôm trước. Chạy được 2 km không nghỉ.', 'Ngủ sớm hơn để sáng dậy học từ vựng.'],
+    ['Đi học cả sáng, chiều họp nhóm đồ án hơi lâu.', 'Chuẩn bị trước nội dung họp để họp nhanh hơn.'],
+    ['Viết được nửa bài Writing, nhờ bạn chấm giúp.', 'Tắt điện thoại khi focus, hôm nay bị xao nhãng nhiều.'],
+    ['Ngày mệt, chỉ kịp giãn cơ và học từ vựng.', 'Không thức khuya xem phim nữa.'],
+    ['Đọc xong một tài liệu tham khảo cho chương 2.', 'Bắt đầu viết chương 2 sớm hơn, đừng để sát hạn.'],
+    ['Chạy bộ buổi sáng thấy rất khỏe.', 'Giữ nhịp chạy đều, không chạy quá nhanh đầu bài.'],
+    ['Làm thêm cả sáng, chiều học được 1 tiếng.', 'Chia việc lớn thành phần nhỏ để làm được trong khung ngắn.'],
+  ];
+  const journals: Journal[] = [];
+  for (let i = 10; i >= 1; i--) {
+    if (i === 6 || i === 3) continue; // vài ngày quên viết
+    const date = addDays(today, -i);
+    const [did, improve] = notes[i % notes.length];
+    journals.push({ id: id('j'), user_id: u, date, energy: 2 + Math.floor(rand() * 4), did, improve, created_at: `${date}T21:30:00.000Z` });
+  }
+  s.journals = journals;
+
+  // Nhìn lại các tuần đã qua của chu kỳ hiện tại
+  const reviews: WeeklyReview[] = [];
+  for (let w = start; addDays(w, 6) < today; w = addDays(w, 7)) {
+    const ws = weekStats(s, w, addDays(w, 6));
+    reviews.push({ id: id('r'), user_id: u, week_start: w, planned: ws.planned, done: ws.done, ai_review: null, wins: '', lessons: '', next_focus: '', created_at: `${addDays(w, 6)}T20:00:00.000Z` });
+  }
+  const last = reviews[reviews.length - 1];
+  if (last) {
+    last.wins = 'Giữ được lịch luyện Listening đều cả tuần, chạy bộ đủ 4 buổi.';
+    last.lessons = 'Đồ án bị để sau vì mình ngại bắt đầu chương 2. Tối thường mệt nên học không vào.';
+    last.next_focus = 'Viết chương 2 vào buổi sáng thứ Ba và thứ Năm khi còn tỉnh táo.';
+    last.ai_review = {
+      headline: 'Tuần ổn định với tiếng Anh và chạy bộ, đồ án cần được ưu tiên lại',
+      went_well: ['Các việc 20% của IELTS gần như không bỏ buổi nào.', 'Chạy bộ đều, đúng giáo án.'],
+      improve: ['Mục tiêu đồ án gần như không được tưới trong tuần.', 'Nhiều phiên focus buổi tối bị dừng sớm.'],
+      next_steps: ['Đặt 2 khung 90 phút buổi sáng cho chương 2.', 'Chuyển việc nhẹ như học từ vựng sang buổi tối.', 'Nhờ bạn cùng nhóm hẹn giờ nộp bản nháp.'],
+      encouragement: 'Bạn đã chứng minh mình làm đều được, giờ chỉ cần dồn sức cho đúng việc. Cố lên nhé!',
+      at: `${addDays(last.week_start, 6)}T20:05:00.000Z`,
+    };
+  }
+  s.weekly_reviews = reviews;
+
   s.inbox_items = [inbox('Ý tưởng: làm flashcard từ vựng bằng Anki', 0), inbox('Hỏi thầy về format báo cáo', 1), inbox('Mua giày chạy mới', 2)];
   return s;
 }

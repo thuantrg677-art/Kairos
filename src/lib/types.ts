@@ -56,6 +56,10 @@ export interface Goal {
   status: 'active' | 'done' | 'dropped';
   sort: number;
   created_at: string;
+  /** "Ảnh chụp" cây lúc kết thúc chu kỳ (Khu vườn kỷ niệm). Cần chạy 003_gd3.sql; chưa có thì để trống. */
+  final_stage?: number | null;
+  final_earned?: number | null;
+  final_total?: number | null;
 }
 
 export interface Task {
@@ -143,6 +147,48 @@ export interface FocusSession {
   created_at: string;
 }
 
+/** Nhật ký một ngày (mỗi ngày một dòng) */
+export interface Journal {
+  id: string;
+  user_id: string;
+  date: string;
+  /** Năng lượng trong ngày, 1 (kiệt sức) … 5 (tràn đầy) */
+  energy: number | null;
+  /** Hôm nay đã làm được gì */
+  did: string;
+  /** Ngày mai muốn làm tốt hơn điều gì */
+  improve: string;
+  created_at: string;
+}
+
+/** Kết quả AI nhận xét tuần (lưu trong cột weekly_reviews.ai_review) */
+export interface AIWeekReview {
+  headline: string;
+  went_well: string[];
+  improve: string[];
+  next_steps: string[];
+  encouragement: string;
+  /** Lúc AI nhận xét */
+  at: string;
+}
+
+/** Nhìn lại một tuần (tuần bắt đầu thứ Hai) */
+export interface WeeklyReview {
+  id: string;
+  user_id: string;
+  week_start: string;
+  /** Số lượt việc theo kế hoạch / đã làm, chụp lại lúc lưu */
+  planned: number;
+  done: number;
+  ai_review: AIWeekReview | null;
+  /** Ba câu tự nhìn lại (cần 003_gd3.sql) */
+  wins?: string;
+  lessons?: string;
+  next_focus?: string;
+  updated_at?: string;
+  created_at: string;
+}
+
 export interface Tables {
   visions: Vision;
   cycles: Cycle;
@@ -153,6 +199,8 @@ export interface Tables {
   schedule_blocks: ScheduleBlock;
   inbox_items: InboxItem;
   focus_sessions: FocusSession;
+  journals: Journal;
+  weekly_reviews: WeeklyReview;
 }
 export type TableName = keyof Tables;
 export const TABLE_NAMES: TableName[] = [
@@ -165,6 +213,8 @@ export const TABLE_NAMES: TableName[] = [
   'schedule_blocks',
   'inbox_items',
   'focus_sessions',
+  'journals',
+  'weekly_reviews',
 ];
 
 /** Toàn bộ dữ liệu của một người dùng */

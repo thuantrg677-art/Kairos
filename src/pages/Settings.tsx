@@ -148,7 +148,7 @@ export default function Settings() {
           )}
         </Section>
 
-        <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 2b · Focus on what matters</p>
+        <p className="pb-4 text-center text-xs text-muted">Kairos · bản giai đoạn 3 · Focus on what matters</p>
       </div>
     </div>
   );

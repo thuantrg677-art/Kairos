@@ -1,16 +1,49 @@
-// "Tổng quan" (bản gọn ở giai đoạn 1): tuần hiện tại của chu kỳ, điểm thực thi từng tuần, tiến độ các mục tiêu.
-// Bản đầy đủ (chi tiết từng mục tiêu, giờ focus, lịch sử) sẽ có ở giai đoạn 4.
+// "Tổng quan": tuần hiện tại của chu kỳ, điểm thực thi từng tuần, tiến độ các mục tiêu,
+// và lối vào Nhìn lại tuần, Nhật ký, Lịch sử (giai đoạn 3). Bản đầy đủ hơn sẽ có ở giai đoạn 4.
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { BookOpen, CalendarDays, ChevronRight, NotebookPen } from 'lucide-react';
 import { useData } from '@/lib/store';
 import { addDays, formatDM, formatDMY, todayISO } from '@/lib/dates';
+import { defaultReviewWeek } from '@/lib/review';
 import { cycleWeek, getActiveCycle, goalGrowth, weekStats } from '@/lib/logic';
 import { Card, cx, EmptyState } from '@/components/ui';
 import { PageHeader } from '@/components/AppShell';
 import { Plant } from '@/components/Plant';
 import { PlantBadge } from '@/components/pickers';
+import { goalHealth } from '@/lib/garden';
 
 const TARGET = 0.85; // Mục tiêu của 12 Week Year: điểm thực thi từ 85% trở lên
+
+function LinkCard({ icon, title, sub, onClick }: { icon: ReactNode; title: string; sub: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-3xl border border-line bg-surface p-3.5 text-left transition hover:bg-surface2 active:scale-[.99]">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-soft text-primary">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-bold text-ink">{title}</span>
+        <span className="block text-[13px] leading-snug text-muted">{sub}</span>
+      </span>
+      <ChevronRight size={18} className="shrink-0 text-muted" />
+    </button>
+  );
+}
+
+/** Lối vào ba trang nhìn lại */
+function ReviewLinks() {
+  const navigate = useNavigate();
+  const d = useData();
+  const week = defaultReviewWeek();
+  const reviewed = d.weekly_reviews.some((r) => r.week_start === week && (r.ai_review || r.wins || r.lessons || r.next_focus));
+  const journaled = d.journals.some((j) => j.date === todayISO());
+  return (
+    <div className="grid gap-2 sm:grid-cols-3">
+      <LinkCard icon={<NotebookPen size={20} />} title="Nhìn lại tuần" sub={reviewed ? `Tuần ${formatDM(week)} đã nhìn lại ✓` : `Tuần ${formatDM(week)} chưa nhìn lại`} onClick={() => navigate('/tong-quan/tuan')} />
+      <LinkCard icon={<BookOpen size={20} />} title="Nhật ký" sub={journaled ? 'Hôm nay đã viết ✓' : 'Hôm nay chưa viết'} onClick={() => navigate('/tong-quan/nhat-ky')} />
+      <LinkCard icon={<CalendarDays size={20} />} title="Lịch sử" sub="Xem lại từng ngày theo lịch" onClick={() => navigate('/tong-quan/lich-su')} />
+    </div>
+  );
+}
 
 export default function Overview() {
   const d = useData();
@@ -36,7 +69,8 @@ export default function Overview() {
     return (
       <div className="mx-auto max-w-3xl">
         <PageHeader title="Tổng quan" />
-        <div className="px-4 lg:px-8">
+        <div className="flex flex-col gap-4 px-4 lg:px-8">
+          <ReviewLinks />
           <Card>
             <EmptyState art={<Plant species="thong" stage={1} size={84} />} title="Chưa có chu kỳ 12 tuần" />
           </Card>
@@ -50,6 +84,7 @@ export default function Overview() {
       <PageHeader title="Tổng quan" subtitle={`Chu kỳ ${formatDMY(cycle.start_date)} – ${formatDMY(cycle.end_date)}`} />
 
       <div className="flex flex-col gap-4 px-4 lg:px-8">
+        <ReviewLinks />
         <Card className="p-4">
           <div className="flex items-baseline justify-between">
             <h2 className="text-base font-bold">Tuần {week}/12</h2>
@@ -110,7 +145,7 @@ export default function Overview() {
               const vision = d.visions.find((v) => v.id === g.vision_id);
               return (
                 <div key={g.id} className="flex items-center gap-3">
-                  <PlantBadge species={g.plant} stage={growth.stage} size={48} />
+                  <PlantBadge species={g.plant} stage={growth.stage} size={48} wilt={goalHealth(g, cycle, d, today).wilt} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[15px] font-semibold">{g.title}</p>
                     <p className="truncate text-xs text-muted">→ {vision?.title}</p>
@@ -128,7 +163,7 @@ export default function Overview() {
           </div>
         </Card>
 
-        <p className="px-1 text-[13px] leading-relaxed text-muted">Đây là bản gọn. Ở giai đoạn 4, trang này sẽ có thêm chi tiết từng mục tiêu và đầu việc, lịch sử hoàn thành, tổng giờ focus và các deadline sắp tới.</p>
+        <p className="px-1 text-[13px] leading-relaxed text-muted">Ở giai đoạn 4, trang này sẽ có thêm chi tiết từng mục tiêu và đầu việc, tổng giờ focus và các deadline sắp tới.</p>
       </div>
     </div>
   );

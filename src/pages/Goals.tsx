@@ -10,6 +10,7 @@ import { Button, Card, cx, EmptyState, IconButton } from '@/components/ui';
 import { PageHeader } from '@/components/AppShell';
 import { Plant, plantIsTree } from '@/components/Plant';
 import { PlantBadge } from '@/components/pickers';
+import { goalHealth } from '@/lib/garden';
 import { TaskRow } from '@/components/TaskRow';
 import { GoalEditor, TaskEditor, VisionEditor } from '@/components/Editors';
 import { SuggestTasksSheet } from '@/components/AI';
@@ -74,7 +75,7 @@ export default function Goals() {
                     <Card key={g.id} className="overflow-hidden">
                       <div className="flex items-center gap-1 p-3 pr-1.5">
                         <button type="button" onClick={() => toggle(g.id)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                          <PlantBadge species={g.plant} stage={growth.stage} size={60} />
+                          <PlantBadge species={g.plant} stage={growth.stage} size={60} wilt={goalHealth(g, cycle, d, today).wilt} />
                           <span className="min-w-0 flex-1">
                             <span className="block text-base leading-snug font-bold text-ink">{g.title}</span>
                             <span className="mt-0.5 block text-[13px] text-muted">

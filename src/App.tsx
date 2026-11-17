@@ -15,6 +15,9 @@ import Garden from '@/pages/Garden';
 import Focus from '@/pages/Focus';
 import Overview from '@/pages/Overview';
 import Settings from '@/pages/Settings';
+import WeekReview from '@/pages/WeekReview';
+import JournalPage from '@/pages/JournalPage';
+import History from '@/pages/History';
 
 let started = false;
 
@@ -75,6 +78,9 @@ export default function App() {
           <Route path="/focus" element={<Focus />} />
           <Route path="/vuon" element={<Garden />} />
           <Route path="/tong-quan" element={<Overview />} />
+          <Route path="/tong-quan/tuan" element={<WeekReview />} />
+          <Route path="/tong-quan/nhat-ky" element={<JournalPage />} />
+          <Route path="/tong-quan/lich-su" element={<History />} />
           <Route path="/nhap" element={<Inbox />} />
           <Route path="/cai-dat" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ChartNoAxesColumn, Inbox, PenLine, RefreshCw, Settings, Sprout, Sun, Target, Timer, WifiOff } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChartNoAxesColumn, Inbox, PenLine, RefreshCw, Settings, Sprout, Sun, Target, Timer, WifiOff } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { usePwa } from '@/lib/pwa';
 import { Button, cx, IconButton, Sheet } from './ui';
@@ -132,6 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
           <div className="my-3 border-t border-line" />
           <SideLink to="/nhap" label="Nháp" icon={<Inbox size={20} />} badge={inboxCount} />
+          <SideLink to="/tong-quan/nhat-ky" label="Nhật ký" icon={<BookOpen size={20} />} />
           <SideLink to="/cai-dat" label="Cài đặt" icon={<Settings size={20} />} />
           <div className="mt-auto">
             <Button className="w-full" onClick={() => setCapture(true)}>
@@ -238,6 +239,23 @@ export function PageHeader({ title, subtitle, children }: { title: string; subti
           </IconButton>
         </span>
       </div>
+    </header>
+  );
+}
+
+/** Tiêu đề cho trang con (Nhìn lại tuần, Nhật ký, Lịch sử): có nút quay lại */
+export function SubPageHeader({ title, subtitle, back = '/tong-quan', children }: { title: string; subtitle?: ReactNode; back?: string; children?: ReactNode }) {
+  const navigate = useNavigate();
+  return (
+    <header className="flex items-start gap-1 px-2 pt-4 pb-3 lg:px-6 lg:pt-8">
+      <IconButton label="Quay lại" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate(back))} className="shrink-0">
+        <ArrowLeft size={22} />
+      </IconButton>
+      <div className="min-w-0 flex-1 pt-1">
+        <h1 className="text-[24px] leading-tight font-bold text-ink">{title}</h1>
+        {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+      </div>
+      {children}
     </header>
   );
 }

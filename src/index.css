@@ -533,3 +533,65 @@
     animation: none;
   }
 }
+
+/* GĐ3 · Vườn: cây lên giai đoạn mới, cây hồi phục, lấp lánh */
+@keyframes k-grow {
+  0% {
+    transform: scale(0.78);
+    filter: brightness(1.35);
+  }
+  55% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+@keyframes k-revive {
+  0% {
+    filter: saturate(0.3) sepia(0.4);
+    transform: translateY(3px) scaleY(0.94);
+  }
+  60% {
+    transform: translateY(-2px) scaleY(1.04);
+  }
+  100% {
+    filter: none;
+    transform: none;
+  }
+}
+@keyframes k-twinkle {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.4);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px) scale(1.1);
+  }
+}
+.k-grow {
+  transform-origin: 50% 100%;
+  animation: k-grow 1.1s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.k-revive {
+  transform-origin: 50% 100%;
+  animation: k-revive 1.2s ease-out both;
+}
+.k-twinkle {
+  animation: k-twinkle 1.6s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-grow,
+  .k-revive,
+  .k-twinkle {
+    animation: none;
+  }
+  .k-twinkle {
+    opacity: 0;
+  }
+}
