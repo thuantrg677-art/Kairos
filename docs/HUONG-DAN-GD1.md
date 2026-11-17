@@ -11,6 +11,8 @@ Bạn sẽ dùng 4 dịch vụ, tất cả đều có gói miễn phí và khôn
 | Supabase | Tài khoản người dùng + database | Tạo ở Bước 2 |
 | Google Cloud | Nút "Tiếp tục với Google" | Tạo ở Bước 6 |
 
+> **Dùng email nào cũng được.** Supabase và Google Cloud không cần trùng email với GitHub hay với nhau. Riêng Vercel phải được nối với đúng tài khoản GitHub đang giữ repo `Kairos` (xem Bước 1).
+
 Mở sẵn một file ghi chú để lưu 3 thứ sẽ lấy được trong lúc làm: **địa chỉ app**, **Project URL**, **Publishable key**.
 
 > Tên nút trên các trang Supabase, Vercel, Google có thể lệch đôi chút so với hướng dẫn vì họ hay đổi giao diện. Nếu không thấy đúng tên, tìm nút có nghĩa tương tự.
@@ -21,7 +23,8 @@ Mở sẵn một file ghi chú để lưu 3 thứ sẽ lấy được trong lúc
 
 Xong bước này bạn đã có một đường link để **xem thử toàn bộ giao diện với dữ liệu mẫu**, dù chưa có database.
 
-1. Vào **vercel.com** → **Sign Up** → chọn **Hobby** (miễn phí) → **Continue with GitHub**.
+1. Vào **vercel.com** → **Sign Up** → chọn **Hobby** (miễn phí) → **Continue with GitHub** (đăng nhập đúng tài khoản GitHub đang giữ repo `Kairos`).
+   - Muốn tài khoản Vercel dùng email khác: chọn **Continue with Email**, rồi ở mục 2 bên dưới bấm **Continue with GitHub** trong khung **Import Git Repository** để nối tài khoản GitHub đó vào.
 2. Bấm **Add New…** → **Project**.
 3. Trong danh sách repo, tìm **Kairos** → bấm **Import**.
    - Không thấy repo? Bấm **Adjust GitHub App Permissions** và cho Vercel quyền xem repo `Kairos`.
@@ -199,7 +202,7 @@ Service worker (phần cài app và offline) chỉ chạy ở bản đã build, 
 - **Supabase miễn phí tự tạm dừng** dự án sau khoảng một tuần không có ai dùng. Khi đó app báo "Chưa tải được dữ liệu". Vào trang Supabase, mở project và bấm **Restore project** là chạy lại, dữ liệu vẫn còn. Từ giai đoạn 4, tác vụ nhắc lịch chạy định kỳ sẽ giữ cho dự án luôn hoạt động.
 - **Offline:** app mở được và hiện dữ liệu của lần tải gần nhất. Tick việc hay ghi Nháp thì cần có mạng.
 - **Giờ giấc** lấy theo đồng hồ của thiết bị. Tuần bắt đầu từ thứ Hai.
-- **Repo đang để Public:** ai cũng xem được code, nhưng trong code không có khóa bí mật nào. Muốn kín hơn, vào GitHub → **Settings** → cuối trang **Change visibility** → **Private**; Vercel vẫn deploy bình thường.
+- **Repo đang để Public, và nên giữ như vậy khi dùng Vercel miễn phí.** Ai cũng xem được code, nhưng trong code không có khóa bí mật nào. Nếu đổi sang Private, gói Hobby của Vercel chỉ deploy những commit do chính chủ tài khoản Vercel đứng tên, nên các bản cập nhật do Claude đẩy lên sẽ bị chặn. Muốn để Private, hãy báo trước để các commit được đứng tên tài khoản GitHub của bạn.
 
 ## Lỗi thường gặp
 
