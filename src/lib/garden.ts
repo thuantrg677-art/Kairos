@@ -1,9 +1,9 @@
 // Sức khỏe của cây trong Vườn (héo / hồi phục), hiệu ứng khi cây đổi giai đoạn,
 // và việc kết thúc chu kỳ 12 tuần để lưu cây vào Khu vườn kỷ niệm.
 
-import type { Cycle, Goal, Snapshot } from './types';
+import type { Cycle, Goal, PlantSpecies, Snapshot, Task } from './types';
 import { addDays, diffDays, mondayOf, todayISO } from './dates';
-import { CYCLE_DAYS, goalGrowth, STAGE_NAMES, STAGE_NAMES_TREE, weekStats, type Growth } from './logic';
+import { CYCLE_DAYS, dropsToNextStage, goalGrowth, STAGE_NAMES, STAGE_NAMES_TREE, taskPoints, weekStats, type Growth } from './logic';
 import { loadedSince, useStore } from './store';
 
 /** Bao nhiêu ngày liền không tưới thì cây hơi héo / héo rõ. Cây không bao giờ chết hẳn. */
@@ -19,7 +19,18 @@ export interface Health {
   lastWatered: string | null;
 }
 
-export const stageNames = (g: Pick<Goal, 'plant'>) => (g.plant === 'tan-tron' || g.plant === 'thong' ? STAGE_NAMES_TREE : STAGE_NAMES);
+/** Gợi ý loài cây chưa dùng để vườn đa dạng. Loài mới của bản 2 chỉ dùng khi đã chạy 005_v2.sql. */
+export function nextPlant(goals: Goal[], used: PlantSpecies[] = []): PlantSpecies {
+  const order: PlantSpecies[] = useStore.getState().gd5
+    ? ['huong-duong', 'sen', 'hong', 'la-kim', 'linh-lan', 'dong-tien', 'tan-tron', 'xuong-rong', 'ly', 'thong']
+    : ['sen', 'linh-lan', 'ly', 'tan-tron', 'thong'];
+  const taken = new Set([...goals.filter((g) => g.status === 'active').map((g) => g.plant), ...used]);
+  return order.find((p) => !taken.has(p)) ?? order[0];
+}
+
+/** Các loài là cây thân gỗ (giai đoạn cuối gọi là "Trưởng thành" thay vì "Nở hoa") */
+const TREES = new Set(['tan-tron', 'thong', 'la-kim']);
+export const stageNames = (g: Pick<Goal, 'plant'>) => (TREES.has(g.plant) ? STAGE_NAMES_TREE : STAGE_NAMES);
 
 /**
  * Cây héo khi bị bỏ bê: tính số ngày liền không có việc nào của mục tiêu được tick.
@@ -62,7 +73,7 @@ export function livePlants(d: Pick<Snapshot, 'goals' | 'tasks' | 'task_completio
 // ------------------------------------------------------------
 // Nhớ lần cuối người dùng nhìn thấy mỗi cây (để biết cây vừa lên giai đoạn hay vừa hồi phục)
 // ------------------------------------------------------------
-type Seen = Record<string, { s: number; w: number }>;
+type Seen = Record<string, { s: number; w: number; e?: number }>;
 const seenKey = () => `kairos-garden-seen-${useStore.getState().userId ?? 'x'}`;
 
 export function readSeen(): Seen {
@@ -74,7 +85,7 @@ export function readSeen(): Seen {
 }
 export function writeSeen(plants: PlantState[]) {
   const seen: Seen = {};
-  for (const p of plants) seen[p.goal.id] = { s: p.growth.stage, w: p.health.wilt };
+  for (const p of plants) seen[p.goal.id] = { s: p.growth.stage, w: p.health.wilt, e: p.growth.earned };
   try {
     localStorage.setItem(seenKey(), JSON.stringify(seen));
   } catch {
@@ -82,9 +93,9 @@ export function writeSeen(plants: PlantState[]) {
   }
 }
 
-export type PlantEvent = 'grew' | 'revived';
+export type PlantEvent = 'grew' | 'revived' | 'watered';
 
-/** So với lần xem trước: cây nào vừa lên giai đoạn, cây nào vừa tươi lại */
+/** So với lần xem trước: cây nào vừa lên giai đoạn, vừa tươi lại, hay vừa được tưới thêm */
 export function plantEvents(plants: PlantState[], seen: Seen): Map<string, PlantEvent> {
   const out = new Map<string, PlantEvent>();
   for (const p of plants) {
@@ -92,6 +103,7 @@ export function plantEvents(plants: PlantState[], seen: Seen): Map<string, Plant
     if (!before) continue;
     if (p.growth.stage > before.s) out.set(p.goal.id, 'grew');
     else if (before.w > 0 && p.health.wilt === 0) out.set(p.goal.id, 'revived');
+    else if (before.e !== undefined && p.growth.earned > before.e) out.set(p.goal.id, 'watered');
   }
   return out;
 }
@@ -108,15 +120,40 @@ export function plantSnapshot(goalId: string | null): PlantState | null {
   const cycle = s.cycles.find((c) => c.id === goal.cycle_id) ?? null;
   return { goal, growth: goalGrowth(goal, cycle, s), health: goalHealth(goal, cycle, s) };
 }
-export function announceGrowth(before: PlantState | null) {
-  if (!before) return;
-  const after = plantSnapshot(before.goal.id);
-  if (!after) return;
+const CHEERS_STEP = ['Một bước nhỏ, một giọt nước', 'Từng chút một, cây đang lớn', 'Làm được rồi, cứ giữ nhịp này', 'Việc nhỏ hôm nay, kết quả lớn ngày mai', 'Thêm một việc xong'];
+const CHEERS_HIGH = ['Việc đòn bẩy cao', 'Đúng việc 20% rồi', 'Đây mới là việc tạo kết quả'];
+const CHEERS_NORMAL = ['Xong thêm một việc', 'Gọn gàng', 'Tốt lắm'];
+const pick = (list: string[]) => list[Math.floor(Math.random() * list.length)];
+const cut = (t: string, n = 32) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
+
+/**
+ * Gọi ngay sau khi tick một việc: việc nhỏ cỡ nào cũng có lời khen và cho thấy cây tiến thêm được bao nhiêu
+ * (còn mấy 💧 nữa thì lên giai đoạn mới). Lên giai đoạn hoặc vừa hồi phục thì báo riêng.
+ * `before` là trạng thái cây chụp lại trước khi tick.
+ */
+export function celebrateTick(task: Task, before: PlantState | null, points: number) {
   const st = useStore.getState();
-  if (after.growth.stage > before.growth.stage) {
-    st.toast(`🌱 Cây "${after.goal.title}" vừa lên giai đoạn ${stageNames(after.goal)[after.growth.stage]}!`, 'success');
+  const cheer = task.parent_id ? pick(CHEERS_STEP) : task.leverage === 'high' ? pick(CHEERS_HIGH) : pick(CHEERS_NORMAL);
+  const after = before ? plantSnapshot(before.goal.id) : null;
+  if (!before || !after) {
+    st.toast(`💧 +${points} · ${cheer}!`, 'success');
+  } else if (after.growth.stage > before.growth.stage) {
+    st.toast(`🌱 Cây "${cut(after.goal.title)}" vừa lên giai đoạn ${stageNames(after.goal)[after.growth.stage]}!`, 'success');
   } else if (before.health.wilt > 0 && after.health.wilt === 0) {
-    st.toast(`🌿 Cây "${after.goal.title}" đã tươi lại nhờ lần tưới này.`, 'success');
+    st.toast(`🌿 +${points} 💧 · Cây "${cut(after.goal.title)}" đã tươi lại nhờ lần tưới này.`, 'success');
+  } else {
+    const left = dropsToNextStage(after.growth);
+    const next = left !== null ? ` · còn ${left} 💧 nữa là ${stageNames(after.goal)[after.growth.stage + 1]}` : '';
+    st.toast(`💧 +${points} cho "${cut(after.goal.title, 26)}"${next}. ${cheer}!`, 'success');
+  }
+  // Xong hết việc nhỏ của một đầu việc làm một lần: nhắc tick đầu việc đó
+  if (task.parent_id) {
+    const s = useStore.getState();
+    const parent = s.tasks.find((t) => t.id === task.parent_id);
+    const siblings = s.tasks.filter((t) => t.parent_id === task.parent_id);
+    if (parent && parent.kind === 'once' && !parent.done_at && siblings.length > 1 && siblings.every((t) => t.done_at)) {
+      setTimeout(() => st.toast(`✅ Xong hết việc nhỏ của "${cut(parent.title)}". Hoàn thành đầu việc này thì tick nó để nhận thêm +${taskPoints(parent)} 💧.`), 900);
+    }
   }
 }
 

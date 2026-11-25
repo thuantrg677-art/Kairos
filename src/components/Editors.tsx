@@ -1,4 +1,4 @@
-// Các bảng thêm/sửa: đầu việc, mục tiêu 12 tuần, mục tiêu dài hạn.
+// Các bảng thêm/sửa theo 4 tầng: mục tiêu dài hạn → mục tiêu ngắn hạn (12 tuần) → đầu việc → việc mỗi ngày.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Trash2, Zap } from 'lucide-react';
@@ -8,6 +8,7 @@ import { todayISO, WEEKDAY_SHORT } from '@/lib/dates';
 import type { Goal, PlantSpecies, Task, Vision } from '@/lib/types';
 import { Button, Chip, cx, Field, Sheet, Switch } from './ui';
 import { DateField, PlantPicker, Segmented } from './pickers';
+import { nextPlant as nextPlantFor } from '@/lib/garden';
 import { AIButton, AlignCheck, PhraseHelper } from './AI';
 import { useAI } from '@/lib/ai';
 
@@ -116,6 +117,10 @@ export function TaskEditor({
     if (task) {
       st.update('tasks', task.id, values);
       saved = { ...task, ...values };
+      // Việc mỗi ngày của đầu việc này đi theo mục tiêu và nhãn 20/80 của nó
+      for (const c of st.tasks.filter((x) => x.parent_id === task.id)) {
+        if (c.leverage !== values.leverage || c.goal_id !== values.goal_id) st.update('tasks', c.id, { leverage: values.leverage, goal_id: values.goal_id });
+      }
     } else {
       saved = st.insert('tasks', { ...values, done_at: null, archived_at: null });
       if (saved && doToday && kind === 'once') {
@@ -129,7 +134,8 @@ export function TaskEditor({
 
   const remove = () => {
     if (!task) return;
-    if (!window.confirm(`Xóa việc "${task.title}"? Lịch sử hoàn thành của việc này cũng bị xóa.`)) return;
+    const kids = useStore.getState().tasks.filter((t) => t.parent_id === task.id).length;
+    if (!window.confirm(`Xóa đầu việc "${task.title}"?${kids ? ` ${kids} việc mỗi ngày của nó cũng bị xóa.` : ''} Lịch sử hoàn thành cũng bị xóa.`)) return;
     useStore.getState().remove('tasks', task.id);
     onClose();
   };
@@ -258,7 +264,7 @@ export function TaskEditor({
               <span className="flex items-center gap-1 text-sm font-bold text-high">
                 <Zap size={15} fill="currentColor" /> Việc 20%
               </span>
-              <span className="mt-0.5 block text-[13px] leading-snug text-muted">Đòn bẩy cao, tạo ra phần lớn kết quả. Tưới +3 💧</span>
+              <span className="mt-0.5 block text-[13px] leading-snug text-muted">Đòn bẩy cao, tạo ra phần lớn kết quả. Tưới +3 💧, mỗi việc nhỏ của nó +2 💧</span>
             </button>
             <button
               type="button"
@@ -267,7 +273,7 @@ export function TaskEditor({
               className={cx('rounded-2xl border-2 p-3 text-left transition', leverage === 'normal' ? 'border-primary bg-soft' : 'border-line bg-surface')}
             >
               <span className="text-sm font-bold text-ink">Việc 80%</span>
-              <span className="mt-0.5 block text-[13px] leading-snug text-muted">Cần làm nhưng ít tác động hơn. Tưới +1 💧</span>
+              <span className="mt-0.5 block text-[13px] leading-snug text-muted">Cần làm nhưng ít tác động hơn. Tưới +1 💧, mỗi việc nhỏ +1 💧</span>
             </button>
           </div>
           {source === 'ai' && reason && (
@@ -294,7 +300,145 @@ export function TaskEditor({
 }
 
 // ------------------------------------------------------------
-// Mục tiêu 12 tuần
+// Việc mỗi ngày (việc nhỏ, làm trong một ngày, thường nằm dưới một đầu việc)
+// ------------------------------------------------------------
+const STEP_MINUTES = [10, 15, 25, 30, 45, 60];
+
+/** Các đầu việc còn mở để gắn việc mỗi ngày vào, nhóm theo mục tiêu */
+export function useParentOptions() {
+  const tasks = useStore((s) => s.tasks);
+  const goals = useStore((s) => s.goals);
+  const cycles = useStore((s) => s.cycles);
+  return useMemo(() => {
+    const cycle = getActiveCycle(cycles);
+    const live = goals.filter((g) => g.status === 'active' && (!cycle || g.cycle_id === cycle.id));
+    const open = tasks.filter((t) => !t.parent_id && !t.archived_at && !t.done_at);
+    const groups = live.map((g) => ({ label: g.title, tasks: open.filter((t) => t.goal_id === g.id) })).filter((g) => g.tasks.length);
+    const loose = open.filter((t) => !t.goal_id);
+    if (loose.length) groups.push({ label: 'Việc lẻ', tasks: loose });
+    return groups;
+  }, [tasks, goals, cycles]);
+}
+
+export function StepEditor({
+  open,
+  onClose,
+  step,
+  parentId,
+  date,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Có step = sửa; không có = thêm mới */
+  step?: Task | null;
+  /** Thêm mới: gắn sẵn vào đầu việc này */
+  parentId?: string | null;
+  /** Thêm mới: ngày làm (mặc định hôm nay) */
+  date?: string;
+}) {
+  const gd5 = useStore((s) => s.gd5);
+  const groups = useParentOptions();
+  const [title, setTitle] = useState('');
+  const [parent, setParent] = useState('');
+  const [day, setDay] = useState<string | null>(null);
+  const [minutes, setMinutes] = useState(25);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle(step?.title ?? '');
+    setParent(step?.parent_id ?? parentId ?? '');
+    setDay(step?.due_date ?? date ?? todayISO());
+    setMinutes(step?.estimate_min ?? 25);
+    setError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step?.id, parentId]);
+
+  const save = () => {
+    const t = title.trim();
+    if (!t) return setError('Bạn chưa nhập việc cần làm.');
+    if (!day) return setError('Chọn ngày làm việc này.');
+    const st = useStore.getState();
+    const p = parent ? st.tasks.find((x) => x.id === parent) : undefined;
+    if (p && !st.gd5) return setError('Chủ app cần chạy file 005_v2.sql trong Supabase thì mới gắn việc nhỏ vào đầu việc được.');
+    const values = {
+      title: t,
+      due_date: day,
+      estimate_min: Math.max(5, Math.min(600, minutes || 25)),
+      parent_id: p ? p.id : null,
+      goal_id: p ? p.goal_id : step?.goal_id ?? null,
+      leverage: p ? p.leverage : step?.leverage ?? 'normal',
+    };
+    if (step) st.update('tasks', step.id, values);
+    else if (!st.insert('tasks', { ...values, kind: 'once', weekdays: [], leverage_reason: '', leverage_source: 'manual', important: false, done_at: null, archived_at: null })) return;
+    onClose();
+  };
+
+  const remove = () => {
+    if (!step) return;
+    if (!window.confirm(`Xóa việc "${step.title}"?`)) return;
+    useStore.getState().remove('tasks', step.id);
+    onClose();
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={step ? 'Sửa việc' : 'Thêm việc cần làm'}
+      footer={
+        <>
+          {step && (
+            <Button variant="danger" onClick={remove} aria-label="Xóa việc">
+              <Trash2 size={18} />
+            </Button>
+          )}
+          <Button className="flex-1" onClick={save}>
+            {step ? 'Lưu thay đổi' : 'Thêm việc'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label="Việc cần làm" hint="Việc nhỏ, làm xong trong một buổi. Bắt đầu bằng động từ, ví dụ: Nghe Cam 18 Test 1 phần 3.">
+          <input className="k-input" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder="Ví dụ: Viết dàn ý mục 2.1" autoFocus={!step} />
+        </Field>
+        <Field label="Thuộc đầu việc nào?" hint={gd5 ? 'Việc nhỏ của một Việc 20% tưới +2 💧, của Việc 80% tưới +1 💧.' : 'Cần chạy 005_v2.sql để gắn việc nhỏ vào đầu việc.'}>
+          <select className="k-input" value={parent} onChange={(e) => setParent(e.target.value)} disabled={!gd5}>
+            <option value="">Không thuộc đầu việc nào (việc lẻ)</option>
+            {groups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.leverage === 'high' ? '⚡ ' : ''}
+                    {t.title}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </Field>
+        <Field label="Làm vào ngày">
+          <DateField value={day} onChange={setDay} />
+        </Field>
+        <div>
+          <span className="mb-1.5 block text-sm font-semibold">Khoảng bao lâu?</span>
+          <div className="flex flex-wrap gap-1.5">
+            {STEP_MINUTES.map((m) => (
+              <Chip key={m} selected={minutes === m} onClick={() => setMinutes(m)}>
+                {m < 60 ? `${m}′` : '1 giờ'}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        {error && <p className="rounded-2xl bg-danger/10 px-3 py-2 text-sm font-medium text-danger">{error}</p>}
+      </div>
+    </Sheet>
+  );
+}
+
+// ------------------------------------------------------------
+// Mục tiêu ngắn hạn (12 tuần)
 // ------------------------------------------------------------
 export function GoalEditor({
   open,
@@ -330,7 +474,7 @@ export function GoalEditor({
     setVision(goal?.vision_id ?? visionId ?? (visions.length === 1 ? visions[0].id : ''));
     setMeasure(goal?.measure ?? defaults?.measure ?? '');
     setDue(goal?.due_date ?? cycle?.end_date ?? null);
-    setPlant(goal?.plant ?? nextPlant(goals));
+    setPlant(goal?.plant ?? nextPlantFor(goals));
     setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, goal?.id, defaults?.title]);
@@ -363,7 +507,7 @@ export function GoalEditor({
     <Sheet
       open={open}
       onClose={onClose}
-      title={goal ? 'Sửa mục tiêu 12 tuần' : 'Thêm mục tiêu 12 tuần'}
+      title={goal ? 'Sửa mục tiêu ngắn hạn' : 'Thêm mục tiêu ngắn hạn (12 tuần)'}
       footer={
         <>
           {goal && (
@@ -425,12 +569,8 @@ export function GoalEditor({
   );
 }
 
-/** Gợi ý loài cây chưa dùng để vườn đa dạng */
-export function nextPlant(goals: Goal[]): PlantSpecies {
-  const order: PlantSpecies[] = ['sen', 'linh-lan', 'ly', 'tan-tron', 'thong'];
-  const used = new Set(goals.filter((g) => g.status === 'active').map((g) => g.plant));
-  return order.find((p) => !used.has(p)) ?? 'sen';
-}
+/** Gợi ý loài cây chưa dùng để vườn đa dạng (giữ tên cũ để các màn khác import như trước) */
+export { nextPlant } from '@/lib/garden';
 
 // ------------------------------------------------------------
 // Mục tiêu dài hạn

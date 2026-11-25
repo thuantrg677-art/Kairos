@@ -1,7 +1,7 @@
 // Dữ liệu mẫu cho chế độ "Xem thử": một sinh viên đang ở tuần 5/12.
 // Mọi ngày tháng tính tương đối so với hôm nay nên lúc nào mở cũng thấy hợp lý.
 
-import type { AppNotification, FixedEvent, FocusSession, Goal, Journal, Snapshot, Task, TaskCompletion, WeeklyReview } from './types';
+import type { AppNotification, ChatMessage, FixedEvent, FocusSession, Goal, Journal, Snapshot, Task, TaskCompletion, WeeklyReview } from './types';
 import { addDays, isoWeekday, mondayOf, todayISO } from './dates';
 import { CYCLE_DAYS, itemsForDate, taskPoints, weekStats } from './logic';
 
@@ -19,6 +19,7 @@ export function emptySnapshot(userId: string, onboarded = false): Snapshot {
       timezone: 'Asia/Ho_Chi_Minh',
       onboarded_at: onboarded ? new Date().toISOString() : null,
       settings: {},
+      ai_context: [],
       created_at: new Date().toISOString(),
     },
     visions: [],
@@ -33,6 +34,7 @@ export function emptySnapshot(userId: string, onboarded = false): Snapshot {
     journals: [],
     weekly_reviews: [],
     notifications: [],
+    chat_messages: [],
   };
 }
 
@@ -44,6 +46,13 @@ export function buildSeed(): Snapshot {
   const createdAt = `${start}T00:00:00.000Z`;
   const s = emptySnapshot(u, true);
   s.profile.display_name = 'Minh Anh';
+  s.profile.ai_context = [
+    'Sinh viên năm 3 ngành Quản trị kinh doanh',
+    'Học trên trường các buổi sáng T2, T4, T6 và chiều T3, T5',
+    'Làm thêm sáng thứ Bảy',
+    'Tập trung tốt nhất vào buổi sáng, tối hay mệt',
+    'Điểm IELTS thi thử gần nhất 5.5, yếu nhất Writing',
+  ];
 
   const v1 = { id: id('v'), user_id: u, title: 'Du học thạc sĩ và dùng tiếng Anh tự tin', description: 'Mình muốn học tiếp ở một môi trường quốc tế và tự tin trình bày ý tưởng bằng tiếng Anh.', area: 'Học tập', sort: 0, created_at: createdAt };
   const v2 = { id: id('v'), user_id: u, title: 'Khỏe mạnh, nhiều năng lượng mỗi ngày', description: 'Có sức khỏe tốt thì mới theo được những mục tiêu khác.', area: 'Sức khỏe', sort: 1, created_at: createdAt };
@@ -58,17 +67,17 @@ export function buildSeed(): Snapshot {
   const goal = (title: string, vision_id: string, measure: string, plant: Goal['plant'], sort: number): Goal => ({
     id: id('g'), user_id: u, cycle_id: cycle.id, vision_id, title, measure, due_date: cycle.end_date, plant, status: 'active', sort, created_at: createdAt,
   });
-  const g1 = goal('Đạt IELTS 6.5', v1.id, 'Điểm thi thử từ 6.5 trở lên', 'sen', 0);
-  const g2 = goal('Hoàn thành đồ án môn học đạt 8.5+', v1.id, 'Nộp đúng hạn, điểm từ 8.5', 'linh-lan', 1);
-  const g3 = goal('Chạy liên tục 5 km', v2.id, 'Chạy 5 km không dừng', 'tan-tron', 2);
+  const g1 = goal('Đạt IELTS 6.5', v1.id, 'Điểm thi thử từ 6.5 trở lên', 'huong-duong', 0);
+  const g2 = goal('Hoàn thành đồ án môn học đạt 8.5+', v1.id, 'Nộp đúng hạn, điểm từ 8.5', 'hong', 1);
+  const g3 = goal('Chạy liên tục 5 km', v2.id, 'Chạy 5 km không dừng', 'la-kim', 2);
   const old = (title: string, vision_id: string, measure: string, plant: Goal['plant'], sort: number, final_stage: number, final_earned: number, final_total: number): Goal => ({
     id: id('g'), user_id: u, cycle_id: oldCycle.id, vision_id, title, measure, due_date: oldCycle.end_date, plant, status: 'done', sort,
     created_at: oldCycle.created_at, final_stage, final_earned, final_total,
   });
   s.goals = [
-    old('Đọc xong 5 cuốn sách tiếng Anh dễ', v1.id, '5 cuốn, mỗi cuốn có ghi chú', 'ly', 0, 4, 142, 168),
-    old('Tập thể dục 3 buổi mỗi tuần', v2.id, 'Đủ 36 buổi', 'thong', 1, 3, 96, 150),
-    old('Đạt GPA học kỳ từ 3.2', v1.id, 'GPA cuối kỳ', 'tan-tron', 2, 2, 51, 140),
+    old('Đọc xong 5 cuốn sách tiếng Anh dễ', v1.id, '5 cuốn, mỗi cuốn có ghi chú', 'dong-tien', 0, 4, 142, 168),
+    old('Tập thể dục 3 buổi mỗi tuần', v2.id, 'Đủ 36 buổi', 'xuong-rong', 1, 3, 96, 150),
+    old('Đạt GPA học kỳ từ 3.2', v1.id, 'GPA cuối kỳ', 'sen', 2, 2, 51, 140),
     g1,
     g2,
     g3,
@@ -110,6 +119,23 @@ export function buildSeed(): Snapshot {
       }
     }
   }
+  // Việc mỗi ngày: chương 2 của đồ án được chia thành các bước nhỏ
+  const chapter2 = s.tasks.find((t) => t.title.startsWith('Viết chương 2'))!;
+  const slides = s.tasks.find((t) => t.title.startsWith('Làm slide'))!;
+  const step = (parent: Task, title: string, day: number, estimate_min: number, done = false): Task => ({
+    ...parent, id: id('t'), parent_id: parent.id, title, kind: 'once', weekdays: [], due_date: addDays(today, day), estimate_min,
+    leverage_reason: '', leverage_source: 'ai', important: false, done_at: done ? `${addDays(today, day)}T10:00:00.000Z` : null,
+    created_at: `${addDays(today, -2)}T08:00:00.000Z`,
+  });
+  const steps = [
+    step(chapter2, 'Đọc lại 3 tài liệu đã ghi chú, gạch ý chính', -6, 40, true),
+    step(chapter2, 'Viết dàn ý mục 2.1–2.3', 0, 30),
+    step(chapter2, 'Viết mục 2.1 (khoảng 2 trang)', 1, 60),
+    step(chapter2, 'Nhờ bạn cùng nhóm góp ý mục 2.1', 2, 15),
+    step(slides, 'Chọn 5 ý chính cho slide báo cáo', 0, 20),
+  ];
+  s.tasks.push(...steps);
+  for (const t of steps) if (t.done_at) completions.push({ id: id('k'), user_id: u, task_id: t.id, date: t.due_date!, points: taskPoints(t), created_at: t.done_at });
   s.task_completions = completions;
 
   // Lịch sử focus giả lập: phần lớn thời gian dành cho việc 20%
@@ -123,9 +149,14 @@ export function buildSeed(): Snapshot {
       const hour = 8 + Math.floor(rand() * 13);
       const startedAt = new Date(`${d}T${String(hour).padStart(2, '0')}:00:00`);
       const sec = done ? planned * 60 : Math.round(planned * 60 * (0.3 + rand() * 0.5));
+      // Mấy ngày gần đây là phiên kiểu mới (bản 2): có điều định làm và tự đánh giá
+      const recent = d >= addDays(today, -6);
+      const rating = recent ? (hour >= 19 ? 1 : rand() < 0.7 ? 3 : 2) : null;
       focus.push({
         id: id('f'), user_id: u, task_id: t.id, goal_id: t.goal_id, started_at: startedAt.toISOString(),
-        ended_at: new Date(startedAt.getTime() + sec * 1000).toISOString(), planned_min: planned, actual_sec: sec, completed: done,
+        ended_at: new Date(startedAt.getTime() + sec * 1000).toISOString(), planned_min: recent ? 0 : planned, actual_sec: sec, completed: done,
+        intention: recent ? t.title : '', steps: [], rating,
+        reflection: rating === 1 ? 'Buổi tối mệt, hay cầm điện thoại' : rating === 3 && rand() < 0.5 ? 'Cất điện thoại ra phòng khác' : '',
         created_at: startedAt.toISOString(),
       });
     }
@@ -214,5 +245,34 @@ export function buildSeed(): Snapshot {
   ];
 
   s.inbox_items = [inbox('Ý tưởng: làm flashcard từ vựng bằng Anki', 0), inbox('Hỏi thầy về format báo cáo', 1), inbox('Mua giày chạy mới', 2)];
+
+  // Cuộc trò chuyện mẫu với Trợ lý AI
+  const reading = s.tasks.find((t) => t.title.startsWith('Đọc 1 tài liệu'))!;
+  const msg = (role: ChatMessage['role'], content: string, minutesAgo: number, meta: ChatMessage['meta'] = {}): ChatMessage => ({
+    id: id('m'), user_id: u, role, content, meta, created_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+  });
+  s.chat_messages = [
+    msg('ai', 'Chào Minh Anh! Mình là Trợ lý Kairos. Mình nắm các mục tiêu, đầu việc và lịch của bạn, nên cứ hỏi thẳng nhé.', 60 * 26),
+    msg('user', 'Tuần này mình ngập việc quá, phân việc 80/20 giúp mình với', 60 * 26 - 2),
+    msg(
+      'ai',
+      `Mình xem lịch tuần này của bạn rồi. Có 2 việc thật sự tạo ra kết quả:
+
+- **Viết chương 2 đồ án**: hạn còn 6 ngày và cả đồ án dựa vào nó. Cây của mục tiêu này cũng đang khát vì mấy ngày rồi chưa được tưới.
+- **Writing Task 2 có người chấm**: kỹ năng kéo điểm IELTS xuống nhiều nhất.
+
+Việc "Đọc 1 tài liệu tham khảo" lúc này chỉ là việc 80%: bạn đã có đủ tài liệu cho chương 2 rồi. Mình chia chương 2 thành các bước nhỏ, việc quan trọng nhất đặt vào buổi sáng khi bạn tỉnh táo nhé.`,
+      60 * 26 - 3,
+      {
+        actions_title: 'Phân việc 80/20 cho tuần này',
+        actions: [
+          { type: 'label', ref: '', parent: reading.id, title: reading.title, detail: '', area: '', kind: 'once', weekdays: [], date: null, estimate_min: 0, leverage: 'normal', reason: 'Đã đủ tài liệu cho chương 2; đọc thêm lúc này ít tác động.', start_min: 0, end_min: 0 },
+          ...steps.slice(1, 4).map((x) => ({ type: 'step' as const, ref: '', parent: chapter2.id, title: x.title, detail: '', area: '', kind: 'once' as const, weekdays: [], date: x.due_date, estimate_min: x.estimate_min, leverage: 'high' as const, reason: '', start_min: 0, end_min: 0 })),
+        ],
+        applied: [1, 2, 3],
+        quick_replies: ['Hôm nay nên làm gì trước?', 'Chia nhỏ việc làm slide'],
+      },
+    ),
+  ];
   return s;
 }

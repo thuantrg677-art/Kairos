@@ -31,7 +31,8 @@ export function upcomingDeadlines(d: Data, today = todayISO(), withinDays = 14):
   const limit = addDays(today, withinDays);
   const out: Deadline[] = [];
   for (const task of d.tasks) {
-    if (task.kind !== 'once' || task.done_at || !task.due_date || task.due_date > limit) continue;
+    // Việc mỗi ngày có ngày làm chứ không có hạn chót nên không tính là deadline
+    if (task.kind !== 'once' || task.parent_id || task.done_at || !task.due_date || task.due_date > limit) continue;
     const goal = liveGoal(task, goals, cycle);
     if (goal === undefined) continue;
     out.push({ task, goal, days: diffDays(today, task.due_date) });
@@ -98,16 +99,27 @@ function occurrences(weekdays: number[], from: string, to: string): number {
 }
 
 export function goalDetail(goal: Goal, cycle: Cycle | null, d: Data, today = todayISO()): GoalDetail {
-  const tasks = d.tasks.filter((t) => t.goal_id === goal.id && !t.archived_at);
+  const all = d.tasks.filter((t) => t.goal_id === goal.id && !t.archived_at);
+  // Bảng chỉ liệt kê đầu việc; 💧 của việc mỗi ngày được cộng vào đầu việc chứa nó
+  const tasks = all.filter((t) => !t.parent_id);
+  const steps = all.filter((t) => t.parent_id);
   const from = cycle?.start_date ?? addDays(today, -83);
   const until = cycle && cycle.end_date < today ? cycle.end_date : today;
   const week = mondayOf(today);
 
   let weekDone = 0;
   let weekPlanned = 0;
+  for (const st of steps) {
+    const doneThisWeek = d.task_completions.some((c) => c.task_id === st.id && c.date >= week);
+    if (doneThisWeek || (!st.done_at && st.due_date && st.due_date >= week && st.due_date <= addDays(week, 6))) {
+      weekPlanned++;
+      if (doneThisWeek) weekDone++;
+    }
+  }
   const rows: TaskProgress[] = tasks.map((task) => {
     const comps = d.task_completions.filter((c) => c.task_id === task.id && c.date >= from);
-    const drops = comps.reduce((n, c) => n + c.points, 0);
+    const kids = new Set(steps.filter((x) => x.parent_id === task.id).map((x) => x.id));
+    const drops = comps.reduce((n, c) => n + c.points, 0) + d.task_completions.reduce((n, c) => (kids.has(c.task_id) && c.date >= from ? n + c.points : n), 0);
     if (task.kind === 'recurring') {
       const created = task.created_at.slice(0, 10);
       const start = created > from ? created : from;

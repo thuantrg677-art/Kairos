@@ -2,7 +2,18 @@
 
 export type ThemeId = 'tan-rung' | 'dinh-tuyet' | 'linh-lan' | 'giay-kem' | 'trang-den' | 'pastel';
 export type DarkMode = 'system' | 'light' | 'dark';
-export type PlantSpecies = 'sen' | 'ly' | 'linh-lan' | 'tan-tron' | 'thong';
+export type PlantSpecies =
+  | 'sen'
+  | 'ly'
+  | 'linh-lan'
+  | 'tan-tron'
+  | 'thong'
+  // Bản 2 (cần chạy 005_v2.sql)
+  | 'la-kim'
+  | 'xuong-rong'
+  | 'huong-duong'
+  | 'dong-tien'
+  | 'hong';
 
 /** Cài đặt lưu trong cột profiles.settings (JSON) */
 export interface ProfileSettings {
@@ -11,10 +22,6 @@ export interface ProfileSettings {
   day_end_min?: number;
   /** Cài đặt nhắc (giai đoạn 4). Thiếu trường nào thì dùng mặc định trong NOTIFY_DEFAULTS. */
   notify?: Partial<NotifySettings>;
-  /** Lúc xem xong (hoặc bỏ qua) Hướng dẫn sử dụng lần đầu. Chưa có thì người mới sẽ thấy hướng dẫn trước phần thiết lập. */
-  guide_seen_at?: string;
-  /** Ẩn thẻ "Tập làm quen" ở màn Hôm nay (bật lại trong Cài đặt → Hướng dẫn sử dụng) */
-  practice_hidden?: boolean;
 }
 
 /** Giờ nhắc tính bằng phút từ 0h, theo múi giờ của thiết bị (profiles.timezone) */
@@ -38,6 +45,8 @@ export interface Profile {
   timezone: string;
   onboarded_at: string | null;
   settings: ProfileSettings;
+  /** Những điều Trợ lý AI ghi nhớ về bối cảnh của người dùng (cần 005_v2.sql) */
+  ai_context?: string[];
   created_at: string;
 }
 
@@ -81,10 +90,17 @@ export interface Goal {
   final_total?: number | null;
 }
 
+/**
+ * Đầu việc (parent_id = null) hoặc Việc mỗi ngày (parent_id = id của đầu việc).
+ * Bốn tầng: Mục tiêu dài hạn → Mục tiêu ngắn hạn (12 tuần) → Đầu việc → Việc mỗi ngày.
+ * Việc mỗi ngày luôn là việc một lần, due_date = ngày định làm, goal_id và leverage lấy theo đầu việc.
+ */
 export interface Task {
   id: string;
   user_id: string;
   goal_id: string | null;
+  /** Đầu việc cha (cần 005_v2.sql). Thiếu/null = đây là một đầu việc. */
+  parent_id?: string | null;
   title: string;
   /** recurring = lặp lại theo thứ trong tuần; once = làm một lần */
   kind: 'recurring' | 'once';
@@ -110,7 +126,7 @@ export interface TaskCompletion {
   user_id: string;
   task_id: string;
   date: string;
-  /** Số giọt nước 💧: 3 cho việc 20%, 1 cho việc 80% */
+  /** Số giọt nước 💧 (xem POINTS trong logic.ts) */
   points: number;
   created_at: string;
 }
@@ -149,7 +165,16 @@ export interface InboxItem {
   created_at: string;
 }
 
-/** Một phiên Focus. Chỉ ghi phiên tập trung (không ghi giờ nghỉ). */
+export interface FocusStep {
+  title: string;
+  minutes?: number;
+  done?: boolean;
+}
+
+/**
+ * Một phiên Focus. Từ bản 2, Focus là một "nghi thức": ghi điều định làm, (tùy chọn) các bước AI gợi ý,
+ * bấm Bắt đầu và Dừng, rồi tự đánh giá phiên có hiệu quả không. Focus không tưới cây.
+ */
 export interface FocusSession {
   id: string;
   user_id: string;
@@ -157,12 +182,17 @@ export interface FocusSession {
   goal_id: string | null;
   started_at: string;
   ended_at: string | null;
-  /** Số phút đã đặt (25/50/90/tự đặt) */
+  /** Bản cũ: số phút đã đặt. Bản 2 không đặt giờ nên ghi 0. */
   planned_min: number;
-  /** Số giây thực sự tập trung (không tính lúc tạm dừng) */
+  /** Số giây từ lúc bấm Bắt đầu tới lúc bấm Dừng */
   actual_sec: number;
-  /** true = chạy hết giờ; false = dừng sớm */
   completed: boolean;
+  /** Các cột dưới đây cần 005_v2.sql */
+  intention?: string;
+  steps?: FocusStep[];
+  /** Tự đánh giá: 3 = hiệu quả, 2 = bình thường, 1 = chưa hiệu quả, null = bỏ qua */
+  rating?: number | null;
+  reflection?: string;
   created_at: string;
 }
 
@@ -223,6 +253,54 @@ export interface AppNotification {
   created_at: string;
 }
 
+/** Một hành động Trợ lý AI đề xuất trong cuộc trò chuyện (người dùng chọn rồi mới được thêm vào kế hoạch) */
+export interface ChatAction {
+  type: 'vision' | 'goal' | 'task' | 'step' | 'label' | 'event';
+  /** Mã để các hành động khác tham chiếu tới (vd "new1"), hoặc mã có sẵn trong dữ liệu (V1, G2, T5) */
+  ref: string;
+  /** Tham chiếu tới cha: mục tiêu dài hạn (goal), mục tiêu (task), đầu việc (step), việc cần gắn nhãn (label) */
+  parent: string;
+  title: string;
+  detail: string;
+  area: string;
+  kind: 'once' | 'recurring';
+  weekdays: number[];
+  /** Hạn (goal/task) hoặc ngày làm (step) */
+  date: string | null;
+  estimate_min: number;
+  leverage: 'high' | 'normal';
+  reason: string;
+  /** Lịch cố định (event): giờ bắt đầu/kết thúc tính bằng phút từ 0h */
+  start_min: number;
+  end_min: number;
+}
+
+export interface ChatMeta {
+  /** Ảnh thu nhỏ người dùng gửi kèm (data URL) */
+  image?: string;
+  /** AI mô tả ngắn nội dung ảnh, để những lượt sau vẫn nhớ */
+  image_note?: string;
+  actions?: ChatAction[];
+  /** Tiêu đề của nhóm đề xuất */
+  actions_title?: string;
+  /** Đã thêm những đề xuất nào vào kế hoạch (vị trí trong actions) */
+  applied?: number[];
+  quick_replies?: string[];
+  /** Những điều AI vừa ghi nhớ thêm */
+  remembered?: string[];
+  /** AI cho rằng đã đủ thông tin để kết thúc phần làm quen */
+  ready?: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  user_id: string;
+  role: 'user' | 'ai';
+  content: string;
+  meta: ChatMeta;
+  created_at: string;
+}
+
 export interface Tables {
   visions: Vision;
   cycles: Cycle;
@@ -236,6 +314,7 @@ export interface Tables {
   journals: Journal;
   weekly_reviews: WeeklyReview;
   notifications: AppNotification;
+  chat_messages: ChatMessage;
 }
 export type TableName = keyof Tables;
 export const TABLE_NAMES: TableName[] = [
@@ -251,6 +330,7 @@ export const TABLE_NAMES: TableName[] = [
   'journals',
   'weekly_reviews',
   'notifications',
+  'chat_messages',
 ];
 
 /** Toàn bộ dữ liệu của một người dùng */

@@ -51,6 +51,11 @@
   --k-soil: #7a5a3c;
   --k-soil-2: #5f452d;
   --k-pond: #8cc9e8;
+  /* Hoa hồng và hoa đồng tiền (bản 2) */
+  --k-rose: #ec5a6e;
+  --k-rose-2: #c23452;
+  --k-gerbera: #f7894a;
+  --k-gerbera-2: #e4572e;
   --k-grain-opacity: 0.2;
   --k-grain-blend: multiply;
   --k-on-sky: var(--k-ink);
@@ -66,6 +71,10 @@
   --k-soil: #6a4e36;
   --k-soil-2: #4a3626;
   --k-pond: #3f7fa3;
+  --k-rose: #f07385;
+  --k-rose-2: #cf4561;
+  --k-gerbera: #f99a5f;
+  --k-gerbera-2: #ea6a3f;
   --k-grain-opacity: 0.28;
   --k-grain-blend: soft-light;
 }
@@ -281,6 +290,10 @@
   --k-soil: #4a4a4a;
   --k-soil-2: #2e2e2e;
   --k-pond: #cfcfcf;
+  --k-rose: #9a9a9a;
+  --k-rose-2: #5e5e5e;
+  --k-gerbera: #c4c4c4;
+  --k-gerbera-2: #7a7a7a;
 }
 [data-theme='trang-den'].dark {
   --k-bg: #0b0b0b;
@@ -313,6 +326,10 @@
   --k-soil: #555555;
   --k-soil-2: #3a3a3a;
   --k-pond: #444444;
+  --k-rose: #b0b0b0;
+  --k-rose-2: #7c7c7c;
+  --k-gerbera: #d6d6d6;
+  --k-gerbera-2: #9a9a9a;
 }
 
 /* 6. Pastel: hồng, tím, bạc hà nhạt */
@@ -585,10 +602,44 @@
 .k-twinkle {
   animation: k-twinkle 1.6s ease-out both;
 }
+/* Bản 2 · giọt nước rơi từ vòi bình tưới khi bình đầy */
+@keyframes k-pour {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(2px, 16px);
+  }
+}
+.k-pour {
+  animation: k-pour 1.2s ease-in infinite;
+}
+/* Vòng tròn "thở" chậm khi đang focus */
+@keyframes k-breathe {
+  0%,
+  100% {
+    transform: scale(0.86);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.k-breathe {
+  animation: k-breathe 8s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .k-grow,
   .k-revive,
-  .k-twinkle {
+  .k-twinkle,
+  .k-pour,
+  .k-breathe {
     animation: none;
   }
   .k-twinkle {

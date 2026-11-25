@@ -1,12 +1,28 @@
 // "Bộ não" của Kairos: việc nào thuộc ngày nào, thứ tự ưu tiên, điểm tưới cây,
 // khung giờ trống và cách tự xếp việc. Không phụ thuộc giao diện nên dễ kiểm thử.
 
-import type { Cycle, FixedEvent, Goal, Profile, ScheduleBlock, Snapshot, Task } from './types';
+import type { Cycle, FixedEvent, Goal, Profile, ScheduleBlock, Snapshot, Task, TaskCompletion } from './types';
 import { addDays, diffDays, isoWeekday } from './dates';
 
-/** Việc 20% tưới 3 giọt, việc 80% tưới 1 giọt */
-export const POINTS = { high: 3, normal: 1 } as const;
-export const taskPoints = (t: Pick<Task, 'leverage'>) => POINTS[t.leverage];
+/**
+ * Số giọt nước 💧 mỗi lần tick:
+ * - Đầu việc: Việc 20% tưới 3 giọt, Việc 80% tưới 1 giọt.
+ * - Việc mỗi ngày (việc nhỏ nằm dưới một đầu việc): 2 giọt nếu thuộc Việc 20%, 1 giọt nếu thuộc Việc 80%.
+ * Việc nhỏ cỡ nào cũng tưới cây, nhưng việc đòn bẩy cao luôn tưới nhiều hơn.
+ */
+export const POINTS = { high: 3, normal: 1, stepHigh: 2, step: 1 } as const;
+export const taskPoints = (t: Pick<Task, 'leverage' | 'parent_id'>) =>
+  t.parent_id ? (t.leverage === 'high' ? POINTS.stepHigh : POINTS.step) : POINTS[t.leverage];
+
+/** Việc mỗi ngày (có đầu việc cha) */
+export const isStep = (t: Pick<Task, 'parent_id'>) => !!t.parent_id;
+
+/** Việc mỗi ngày chưa làm mà đầu việc cha đã xong (hoặc đã bị xóa/lưu trữ) thì không còn tính nữa */
+function orphanedStep(task: Task, byId: Map<string, Task>): boolean {
+  if (!task.parent_id || task.done_at) return false;
+  const parent = byId.get(task.parent_id);
+  return !parent || !!parent.archived_at || !!parent.done_at;
+}
 
 export const CYCLE_DAYS = 84; // 12 tuần
 
@@ -46,12 +62,14 @@ function liveGoalOf(task: Task, goals: Map<string, Goal>, cycle: Cycle | null): 
 export function itemsForDate(s: Data, date: string): DayItem[] {
   const cycle = getActiveCycle(s.cycles);
   const goals = new Map(s.goals.map((g) => [g.id, g]));
+  const byId = new Map(s.tasks.map((t) => [t.id, t]));
   const wd = isoWeekday(date);
   const items: DayItem[] = [];
 
   for (const task of s.tasks) {
     const goal = liveGoalOf(task, goals, cycle);
     if (goal === undefined) continue;
+    if (orphanedStep(task, byId)) continue;
     const block = s.schedule_blocks.find((b) => b.task_id === task.id && b.date === date) ?? null;
 
     if (task.kind === 'recurring') {
@@ -67,8 +85,9 @@ export function itemsForDate(s: Data, date: string): DayItem[] {
         const comp = s.task_completions.find((c) => c.task_id === task.id);
         if (!comp || comp.date !== date) continue;
       } else {
-        // Chưa xong: hiện nếu đã được xếp vào hôm nay, hoặc hạn là hôm nay/ngày mai/đã trễ
-        const dueSoon = !!task.due_date && task.due_date <= addDays(date, 1);
+        // Chưa xong: hiện nếu đã được xếp vào hôm nay, hoặc hạn là hôm nay/ngày mai/đã trễ.
+        // Việc mỗi ngày chỉ hiện đúng ngày định làm (chưa làm thì hôm sau vẫn hiện, ghi là trễ).
+        const dueSoon = !!task.due_date && task.due_date <= (task.parent_id ? date : addDays(date, 1));
         if (!block && !dueSoon) continue;
       }
       items.push({ task, goal, done, block, overdue: !done && !!task.due_date && task.due_date < date });
@@ -94,10 +113,12 @@ function compareItems(a: DayItem, b: DayItem): number {
 export function otherOpenTasks(s: Data, date: string): { task: Task; goal: Goal | null }[] {
   const cycle = getActiveCycle(s.cycles);
   const goals = new Map(s.goals.map((g) => [g.id, g]));
+  const byId = new Map(s.tasks.map((t) => [t.id, t]));
   const today = new Set(itemsForDate(s, date).map((i) => i.task.id));
   const out: { task: Task; goal: Goal | null }[] = [];
   for (const task of s.tasks) {
     if (task.kind !== 'once' || task.done_at || today.has(task.id)) continue;
+    if (orphanedStep(task, byId)) continue;
     const goal = liveGoalOf(task, goals, cycle);
     if (goal === undefined) continue;
     out.push({ task, goal });
@@ -137,7 +158,8 @@ function countOccurrences(weekdays: number[], from: string, to: string): number 
  * Việc 20% đáng 3 💧 nên làm chúng thì cây lớn nhanh gấp 3.
  */
 export function goalGrowth(goal: Goal, cycle: Cycle | null, s: Pick<Snapshot, 'tasks' | 'task_completions'>): Growth {
-  const tasks = s.tasks.filter((t) => t.goal_id === goal.id && !t.archived_at);
+  const byId = new Map(s.tasks.map((t) => [t.id, t]));
+  const tasks = s.tasks.filter((t) => t.goal_id === goal.id && !t.archived_at && !orphanedStep(t, byId));
   const ids = new Set(tasks.map((t) => t.id));
   let total = 0;
   for (const t of tasks) {
@@ -154,6 +176,43 @@ export function goalGrowth(goal: Goal, cycle: Cycle | null, s: Pick<Snapshot, 't
   let stage = 0;
   for (const th of STAGE_THRESHOLDS) if (pct >= th) stage++;
   return { earned, total, pct, stage };
+}
+
+/** Còn bao nhiêu 💧 nữa thì cây lên giai đoạn tiếp theo (null = đã nở hoa / trưởng thành) */
+export function dropsToNextStage(g: Growth): number | null {
+  if (g.stage >= STAGE_THRESHOLDS.length || g.total <= 0) return null;
+  return Math.max(1, Math.ceil(STAGE_THRESHOLDS[g.stage] * g.total - g.earned));
+}
+
+// ------------------------------------------------------------
+// Phần thưởng cho từng việc nhỏ: bình tưới hôm nay và chuỗi ngày tưới cây
+// ------------------------------------------------------------
+
+/** Số 💧 đã tưới trong một ngày */
+export const dropsOn = (completions: Pick<TaskCompletion, 'date' | 'points'>[], date: string) =>
+  completions.reduce((n, c) => (c.date === date ? n + c.points : n), 0);
+
+/**
+ * Bình tưới hôm nay: đầy khi làm hết các việc trong ngày.
+ * capacity = tổng 💧 của mọi việc hôm nay (tối thiểu 3 để ngày ít việc vẫn có cái để lấp đầy).
+ */
+export function waterCan(items: DayItem[], completions: Pick<TaskCompletion, 'date' | 'points'>[], date: string): { drops: number; capacity: number; pct: number } {
+  const drops = dropsOn(completions, date);
+  const planned = items.reduce((n, i) => n + taskPoints(i.task), 0);
+  const capacity = Math.max(3, planned, drops);
+  return { drops, capacity, pct: Math.min(1, drops / capacity) };
+}
+
+/**
+ * Chuỗi ngày liên tiếp có tưới cây (tick ít nhất một việc). Hôm nay chưa tick thì chuỗi tính tới hôm qua
+ * và vẫn còn giữ được (today = false).
+ */
+export function waterStreak(completions: Pick<TaskCompletion, 'date'>[], today: string): { days: number; today: boolean } {
+  const dates = new Set(completions.map((c) => c.date));
+  const has = dates.has(today);
+  let days = 0;
+  for (let d = has ? today : addDays(today, -1); dates.has(d); d = addDays(d, -1)) days++;
+  return { days, today: has };
 }
 
 // ------------------------------------------------------------

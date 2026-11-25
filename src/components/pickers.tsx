@@ -5,7 +5,8 @@ import { CalendarDays, Check, Monitor, Moon, Sun, X } from 'lucide-react';
 import type { DarkMode, PlantSpecies, ThemeId } from '@/lib/types';
 import { formatDMY } from '@/lib/dates';
 import { THEMES } from '@/lib/themes';
-import { Plant, PLANTS } from './Plant';
+import { Plant, PLANTS, V2_PLANTS } from './Plant';
+import { useStore } from '@/lib/store';
 import { Scenery } from './Scenery';
 import { cx } from './ui';
 
@@ -78,9 +79,11 @@ export function PlantBadge({ species, stage, size = 56, wilt }: { species: Plant
 }
 
 export function PlantPicker({ value, onChange }: { value: PlantSpecies; onChange: (v: PlantSpecies) => void }) {
+  // Loài cây mới của bản 2 chỉ chọn được khi database đã chạy 005_v2.sql
+  const gd5 = useStore((s) => s.gd5);
   return (
     <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label="Chọn loài cây">
-      {PLANTS.map((p) => {
+      {PLANTS.filter((p) => gd5 || !V2_PLANTS.has(p.id)).map((p) => {
         const selected = p.id === value;
         return (
           <button

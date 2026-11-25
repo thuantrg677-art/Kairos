@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, LoaderCircle, RefreshCw, Sparkles } from 'lucide-react';
-import { checkAI, useAI, useAIQuota, type AIResults, type AITask } from '@/lib/ai';
+import { checkAI, useAI, useAIQuota, useChatQuota, type AIResults, type AITask } from '@/lib/ai';
 import { useStore } from '@/lib/store';
-import { formatDM, formatDuration, WEEKDAY_SHORT } from '@/lib/dates';
-import type { Goal } from '@/lib/types';
+import { formatDM, formatDuration, isoWeekday, WEEKDAY_SHORT } from '@/lib/dates';
+import type { Goal, Task } from '@/lib/types';
 import { Button, cx, LeverageBadge, Sheet } from './ui';
 
 /** Nút AI: biểu tượng lấp lánh, quay vòng khi đang chờ */
@@ -180,6 +180,125 @@ export function SuggestTasksSheet({ goal, onClose }: { goal: Goal | null; onClos
 }
 
 // ------------------------------------------------------------
+// Bản 2 · AI chia nhỏ một đầu việc thành các việc mỗi ngày
+// ------------------------------------------------------------
+export function BreakdownSheet({ task, onClose }: { task: Task | null; onClose: () => void }) {
+  const { busy, run } = useAI();
+  const [result, setResult] = useState<AIResults['breakdown'] | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+
+  const ask = async () => {
+    if (!task) return;
+    const { result: r } = await run('breakdown', { task_id: task.id });
+    if (r) {
+      setResult(r);
+      setPicked(new Set(r.steps.map((_, i) => i)));
+    } else if (!result) onClose();
+  };
+
+  useEffect(() => {
+    setResult(null);
+    if (task) void ask();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
+
+  const add = () => {
+    if (!task || !result) return;
+    const st = useStore.getState();
+    let n = 0;
+    result.steps.forEach((x, i) => {
+      if (!picked.has(i)) return;
+      const row = st.insert('tasks', {
+        goal_id: task.goal_id,
+        parent_id: task.id,
+        title: x.title,
+        kind: 'once',
+        weekdays: [],
+        due_date: x.date,
+        estimate_min: x.estimate_min,
+        leverage: task.leverage,
+        leverage_reason: '',
+        leverage_source: 'ai',
+        important: false,
+        done_at: null,
+        archived_at: null,
+      });
+      if (row) n++;
+    });
+    if (n) st.toast(`Đã thêm ${n} việc mỗi ngày cho "${task.title}". Mỗi việc xong là +${task.leverage === 'high' ? 2 : 1} 💧`, 'success');
+    onClose();
+  };
+
+  const toggle = (i: number) =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+
+  return (
+    <Sheet
+      open={!!task}
+      onClose={onClose}
+      title="AI chia nhỏ đầu việc"
+      footer={
+        result && (
+          <>
+            <Button variant="outline" onClick={ask} disabled={!!busy} aria-label="Chia cách khác">
+              {busy ? <LoaderCircle size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+            </Button>
+            <Button className="flex-1" onClick={add} disabled={picked.size === 0 || !!busy}>
+              Thêm {picked.size} việc mỗi ngày
+            </Button>
+          </>
+        )
+      }
+    >
+      <p className="text-sm text-muted">
+        Đầu việc <b className="text-ink">{task?.title}</b>
+      </p>
+      {!result && (
+        <div className="flex flex-col items-center gap-3 py-12 text-sm text-muted">
+          <LoaderCircle size={28} className="animate-spin text-primary" />
+          AI đang chia thành từng bước nhỏ theo lịch của bạn…
+        </div>
+      )}
+      {result && (
+        <>
+          {result.note && <p className="mt-3 rounded-2xl bg-soft px-3.5 py-2.5 text-sm leading-snug text-ink">💡 {result.note}</p>}
+          <div className={cx('mt-3 flex flex-col gap-2 transition-opacity', busy && 'opacity-50')}>
+            {result.steps.map((x, i) => {
+              const on = picked.has(i);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggle(i)}
+                  className={cx('flex gap-3 rounded-2xl border-2 p-3 text-left transition', on ? 'border-primary bg-surface' : 'border-line bg-surface opacity-70')}
+                >
+                  <span className={cx('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2', on ? 'border-primary bg-primary text-onprimary' : 'border-line')}>
+                    {on && <Check size={15} strokeWidth={3} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] leading-snug font-semibold text-ink">{x.title}</span>
+                    <span className="mt-1 block text-[13px] text-muted">
+                      {WEEKDAY_SHORT[isoWeekday(x.date) - 1]} {formatDM(x.date)} · {formatDuration(x.estimate_min)} · +{task?.leverage === 'high' ? 2 : 1} 💧
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <QuotaHint className="mt-3 text-center" />
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// ------------------------------------------------------------
 // AI giúp diễn đạt (mục tiêu dài hạn hoặc mục tiêu 12 tuần)
 // ------------------------------------------------------------
 export function PhraseHelper({
@@ -308,6 +427,7 @@ export function AlignCheck({
 export function AIStatus() {
   const [st, setSt] = useState<Awaited<ReturnType<typeof checkAI>> | null>(null);
   const { remaining, limit } = useAIQuota();
+  const chat = useChatQuota();
   useEffect(() => {
     let alive = true;
     checkAI()
@@ -330,12 +450,12 @@ export function AIStatus() {
       {!st && <p className="text-muted">Đang kiểm tra…</p>}
       {st?.state === 'ready' && (
         <p className="text-ink">
-          ✨ AI đang bật. Hôm nay bạn còn <b>{remaining ?? limit}/{limit}</b> lượt.
+          ✨ AI đang bật. Hôm nay bạn còn <b>{remaining ?? limit}/{limit}</b> lượt cho các nút AI và <b>{chat.remaining ?? chat.limit}/{chat.limit}</b> tin nhắn trò chuyện.
         </p>
       )}
       {st && st.state !== 'ready' && <p className="text-muted">{text[st.state]}</p>}
       <p className="mt-2 text-[13px] text-muted">
-        AI giúp gợi ý đầu việc, gắn nhãn 20/80, diễn đạt mục tiêu, sắp xếp Nháp và xếp lịch Hôm nay. Mỗi lần bấm nút AI là một lượt; lượt nào AI lỗi thì không bị tính.
+        Trợ lý AI cùng bạn đặt mục tiêu, phân việc 80/20 và chia việc thành từng bước. Các nút AI (gợi ý đầu việc, gắn nhãn, chia nhỏ, xếp lịch…) dùng chung một số lượt; trò chuyện có lượt riêng. Lượt nào AI lỗi thì không bị tính.
       </p>
     </div>
   );

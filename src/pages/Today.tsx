@@ -12,14 +12,14 @@ import { Scenery } from '@/components/Scenery';
 import { Plant } from '@/components/Plant';
 import { TaskRow } from '@/components/TaskRow';
 import { Timeline } from '@/components/Timeline';
-import { TaskEditor } from '@/components/Editors';
+import { StepEditor, TaskEditor } from '@/components/Editors';
+import { WaterCanCard } from '@/components/Rewards';
 import { useInboxCount } from '@/components/AppShell';
 import { NotificationBell } from '@/components/Notifications';
 import { AIButton, QuotaHint } from '@/components/AI';
 import { useAI } from '@/lib/ai';
 import { JournalCard, WeekReviewPrompt } from '@/components/Journal';
 import { CycleEndBanner } from '@/components/CycleWrap';
-import { PracticeCard } from '@/components/Practice';
 
 export default function Today() {
   const d = useData();
@@ -168,8 +168,8 @@ export default function Today() {
             <CycleEndBanner />
           </div>
 
-          <div className="mb-5 empty:hidden">
-            <PracticeCard />
+          <div className="mb-5">
+            <WaterCanCard items={items} />
           </div>
 
           <div id="viec-hom-nay" className="scroll-mt-4" />
@@ -186,8 +186,13 @@ export default function Today() {
           {items.length === 0 ? (
             <Card>
               <EmptyState art={<Plant species="tan-tron" stage={1} size={84} />} title="Hôm nay chưa có việc nào">
-                Thêm việc mới, hoặc vào Mục tiêu để lên danh sách đầu việc cho từng mục tiêu.
+                Thêm việc cần làm hôm nay, hoặc nhờ Trợ lý AI chia một đầu việc thành các việc nhỏ cho từng ngày.
               </EmptyState>
+              <div className="flex justify-center pb-6">
+                <Button variant="soft" onClick={() => navigate('/tro-ly')}>
+                  Hỏi Trợ lý AI
+                </Button>
+              </div>
             </Card>
           ) : (
             <div className="flex flex-col gap-2">
@@ -291,8 +296,9 @@ export default function Today() {
         </section>
       </div>
 
-      <TaskEditor open={adding} onClose={() => setAdding(false)} defaults={{ kind: 'once', due_date: today }} />
-      <TaskEditor open={!!editing} onClose={() => setEditing(null)} task={editing} />
+      <StepEditor open={adding} onClose={() => setAdding(false)} date={today} />
+      <TaskEditor open={!!editing && !editing.parent_id} onClose={() => setEditing(null)} task={editing} />
+      <StepEditor open={!!editing?.parent_id} onClose={() => setEditing(null)} step={editing} />
     </div>
   );
 }

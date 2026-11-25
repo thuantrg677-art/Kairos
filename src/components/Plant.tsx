@@ -9,7 +9,15 @@ export const PLANTS: { id: PlantSpecies; name: string; note: string; isTree: boo
   { id: 'linh-lan', name: 'Hoa linh lan', note: 'Những chiếc chuông nhỏ', isTree: false },
   { id: 'tan-tron', name: 'Cây tán tròn', note: 'Lớn chậm mà vững', isTree: true },
   { id: 'thong', name: 'Cây thông', note: 'Xanh quanh năm', isTree: true },
+  // Bản 2 (cần chạy 005_v2.sql)
+  { id: 'la-kim', name: 'Cây lá kim', note: 'Bền bỉ qua mùa lạnh', isTree: true },
+  { id: 'xuong-rong', name: 'Xương rồng', note: 'Kiên cường, vẫn nở hoa', isTree: false },
+  { id: 'huong-duong', name: 'Hướng dương', note: 'Luôn hướng về phía mặt trời', isTree: false },
+  { id: 'dong-tien', name: 'Hoa đồng tiền', note: 'Rực rỡ và may mắn', isTree: false },
+  { id: 'hong', name: 'Hoa hồng', note: 'Đẹp nhờ được chăm mỗi ngày', isTree: false },
 ];
+/** Các loài có từ bản 2: chỉ chọn được sau khi chạy 005_v2.sql */
+export const V2_PLANTS = new Set<PlantSpecies>(['la-kim', 'xuong-rong', 'huong-duong', 'dong-tien', 'hong']);
 export const plantName = (id: PlantSpecies) => PLANTS.find((p) => p.id === id)?.name ?? 'Cây';
 export const plantIsTree = (id: PlantSpecies) => PLANTS.find((p) => p.id === id)?.isTree ?? false;
 
@@ -26,6 +34,10 @@ const C = {
   soil: 'var(--k-soil)',
   soil2: 'var(--k-soil-2)',
   pond: 'var(--k-pond)',
+  rose: 'var(--k-rose)',
+  rose2: 'var(--k-rose-2)',
+  gerbera: 'var(--k-gerbera)',
+  gerbera2: 'var(--k-gerbera-2)',
 };
 
 /** Một chiếc lá/cánh hoa nhọn hai đầu, mọc từ gốc (x, y), dài len, rộng w, xoay rot độ */
@@ -281,6 +293,298 @@ function Pine({ stage }: { stage: number }) {
   );
 }
 
+// ---------- Cây lá kim (dáng vân sam: thân thon, nhiều tầng cành rủ) ----------
+function Conifer({ stage }: { stage: number }) {
+  const tiers = stage === 2 ? 3 : stage === 3 ? 5 : 8;
+  const top = stage === 2 ? 78 : stage === 3 ? 54 : 18;
+  const maxW = stage === 2 ? 13 : stage === 3 ? 17 : 21;
+  const base = 113;
+  const step = (base - top) / (tiers + 0.7);
+  // Vẽ từ tầng dưới cùng (rộng nhất) lên ngọn; các tầng chồng lên nhau, mép dưới gợn sóng như cành rủ
+  const list = Array.from({ length: tiers }, (_, i) => {
+    const yb = base - i * step;
+    const yt = yb - step * 1.75;
+    const w = maxW * (0.32 + 0.68 * (1 - i / tiers));
+    return { yb, yt, w };
+  });
+  return (
+    <>
+      <Soil />
+      <rect x={56.5} y={108} width={7} height={20} rx={1.5} fill={C.trunk} />
+      {list.map(({ yb, yt, w }) => (
+        <g key={yb}>
+          <path
+            d={`M60 ${yt} L${60 + w} ${yb} Q${60 + w * 0.66} ${yb + 4.5} ${60 + w / 3} ${yb} Q60 ${yb + 4.5} ${60 - w / 3} ${yb} Q${60 - w * 0.66} ${yb + 4.5} ${60 - w} ${yb} Z`}
+            fill={C.leaf2}
+            stroke={C.leaf2}
+            strokeWidth={1}
+            strokeLinejoin="round"
+          />
+          <path d={`M60 ${yt} L${60 + w} ${yb} Q${60 + w * 0.66} ${yb + 4.5} ${60 + w / 3} ${yb} Q${60 + w / 6} ${yb + 2.6} 60 ${yb + 2.6} Z`} fill={C.leaf3} />
+        </g>
+      ))}
+      <path d={`M60 ${list[tiers - 1].yt - 6} L60 ${list[tiers - 1].yt + 4}`} stroke={C.leaf3} strokeWidth={2} strokeLinecap="round" />
+      {stage === 4 &&
+        [
+          [47, 96],
+          [74, 86],
+          [52, 66],
+          [69, 54],
+        ].map(([x, y]) => (
+          <g key={`${x}-${y}`}>
+            <ellipse cx={x} cy={y} rx={2.6} ry={4.2} fill={C.trunk} />
+            <path d={`M${x - 1.8} ${y - 1} L${x + 1.8} ${y - 1} M${x - 1.8} ${y + 1.4} L${x + 1.8} ${y + 1.4}`} stroke={C.petalShade} strokeWidth={0.8} strokeOpacity={0.7} />
+          </g>
+        ))}
+    </>
+  );
+}
+
+// ---------- Xương rồng ----------
+/** Một đoạn thân xương rồng: hình chữ nhật bo tròn, có gân dọc và gai nhỏ */
+function CactusPart({ x, y, w, h, shade = true }: { x: number; y: number; w: number; h: number; shade?: boolean }) {
+  const spines: [number, number][] = [];
+  for (let yy = y + 7; yy < y + h - 4; yy += 9) {
+    spines.push([x + 1.5, yy], [x + w - 1.5, yy + 4]);
+  }
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={w / 2} fill={C.leaf2} />
+      {shade && <rect x={x + w / 2} y={y} width={w / 2} height={h} rx={w / 4} fill={C.leaf3} opacity={0.55} />}
+      <path d={`M${x + w * 0.32} ${y + w * 0.5} L${x + w * 0.32} ${y + h - 3} M${x + w * 0.68} ${y + w * 0.5} L${x + w * 0.68} ${y + h - 3}`} stroke={C.leaf3} strokeWidth={1.1} strokeOpacity={0.6} />
+      {spines.map(([sx, sy]) => (
+        <path key={`${sx}-${sy}`} d={`M${sx} ${sy} l${sx < x + w / 2 ? -2.6 : 2.6} -1.6`} stroke={C.petal} strokeWidth={1} strokeLinecap="round" />
+      ))}
+    </g>
+  );
+}
+
+function CactusFlower({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${s})`}>
+      {[-60, -30, 0, 30, 60].map((r) => (
+        <Leaf key={r} x={0} y={0} len={9} w={3.6} rot={r} fill={r === 0 ? C.bloom2 : C.bloom} />
+      ))}
+      <circle cx={0} cy={-1} r={1.8} fill={C.pollen} />
+    </g>
+  );
+}
+
+function Cactus({ stage }: { stage: number }) {
+  if (stage === 1) {
+    return (
+      <>
+        <Soil />
+        <ellipse cx={60} cy={119} rx={7.5} ry={8.5} fill={C.leaf2} />
+        <path d="M57 114 l-2 -1.4 M63 113 l2 -1.4 M60 112 l0 -2.4" stroke={C.petal} strokeWidth={1} strokeLinecap="round" />
+      </>
+    );
+  }
+  if (stage === 2) {
+    return (
+      <>
+        <Soil />
+        <ellipse cx={60} cy={110} rx={14} ry={17} fill={C.leaf2} />
+        <path d="M60 110 m0 -17 a14 17 0 0 1 0 34 Z" fill={C.leaf3} opacity={0.55} />
+        <path d="M54 96 C52 104 52 116 54 125 M66 96 C68 104 68 116 66 125" stroke={C.leaf3} strokeWidth={1.1} strokeOpacity={0.6} fill="none" />
+        {[
+          [47, 104],
+          [73, 108],
+          [48, 116],
+          [72, 119],
+          [60, 93],
+        ].map(([x, y]) => (
+          <path key={`${x}-${y}`} d={`M${x} ${y} l${x < 60 ? -2.6 : x > 60 ? 2.6 : 0} -1.8`} stroke={C.petal} strokeWidth={1} strokeLinecap="round" />
+        ))}
+      </>
+    );
+  }
+  const top = stage === 3 ? 64 : 48;
+  return (
+    <>
+      <Soil />
+      {/* cánh tay phải */}
+      <CactusPart x={70} y={stage === 3 ? 78 : 62} w={10} h={stage === 3 ? 26 : 30} />
+      <rect x={64} y={stage === 3 ? 96 : 84} width={12} height={9} rx={4.5} fill={C.leaf2} />
+      {/* cánh tay trái (chỉ khi trưởng thành) */}
+      {stage === 4 && (
+        <>
+          <CactusPart x={38} y={76} w={10} h={26} />
+          <rect x={42} y={95} width={12} height={9} rx={4.5} fill={C.leaf2} />
+        </>
+      )}
+      <CactusPart x={51} y={top} w={18} h={128 - top} />
+      {stage === 3 && (
+        <>
+          <ellipse cx={56} cy={top + 1} rx={2.6} ry={3.6} fill={C.bloom} />
+          <ellipse cx={64} cy={top} rx={2.6} ry={3.6} fill={C.bloom2} />
+        </>
+      )}
+      {stage === 4 && (
+        <>
+          <CactusFlower x={55} y={top + 2} s={1.1} />
+          <CactusFlower x={66} y={top + 1} s={0.95} />
+          <CactusFlower x={75} y={63} s={0.85} />
+          <CactusFlower x={43} y={77} s={0.8} />
+        </>
+      )}
+    </>
+  );
+}
+
+// ---------- Hoa hướng dương ----------
+function Sunflower({ stage }: { stage: number }) {
+  const top = stage === 2 ? 84 : stage === 3 ? 58 : 46;
+  return (
+    <>
+      <Soil />
+      <path d={`M60 126 C61 108 59 ${top + 30} 60 ${top}`} stroke={C.leaf3} strokeWidth={stage === 4 ? 4 : 3.4} fill="none" strokeLinecap="round" />
+      <Leaf x={60} y={112} len={24} w={12} rot={-64} fill={C.leaf2} vein={C.leaf3} />
+      <Leaf x={60} y={106} len={22} w={11} rot={60} fill={C.leaf1} vein={C.leaf2} />
+      {stage >= 3 && (
+        <>
+          <Leaf x={60} y={88} len={20} w={10} rot={-56} fill={C.leaf1} vein={C.leaf2} />
+          <Leaf x={60} y={80} len={18} w={9} rot={54} fill={C.leaf2} vein={C.leaf3} />
+        </>
+      )}
+      {stage === 2 && <Leaf x={60} y={86} len={13} w={6} rot={0} fill={C.leaf1} />}
+      {stage === 3 && (
+        <>
+          <circle cx={60} cy={top - 4} r={8} fill={C.leaf2} />
+          {[-50, -20, 20, 50].map((r) => (
+            <Leaf key={r} x={60} y={top + 1} len={11} w={3.6} rot={r} fill={C.leaf3} />
+          ))}
+          <Leaf x={60} y={top - 9} len={7} w={3.4} rot={-12} fill={C.pollen} />
+          <Leaf x={60} y={top - 9} len={7} w={3.4} rot={14} fill={C.pollen} />
+        </>
+      )}
+      {stage === 4 && (
+        <g>
+          {Array.from({ length: 16 }).map((_, i) => (
+            <Leaf key={`b${i}`} x={60} y={top - 10} len={20} w={5} rot={i * 22.5 + 11} fill={C.pollen} />
+          ))}
+          {Array.from({ length: 16 }).map((_, i) => (
+            <Leaf key={`f${i}`} x={60} y={top - 10} len={22} w={5.4} rot={i * 22.5} fill={C.pollen} vein={C.petalShade} />
+          ))}
+          <circle cx={60} cy={top - 10} r={10.5} fill={C.trunk} />
+          <circle cx={60} cy={top - 10} r={7} fill={C.soil2} />
+          {[
+            [57, -13],
+            [63, -12],
+            [60, -8],
+            [56, -8],
+            [64, -7],
+          ].map(([x, dy]) => (
+            <circle key={`${x}${dy}`} cx={x} cy={top + dy} r={0.9} fill={C.pollen} opacity={0.8} />
+          ))}
+        </g>
+      )}
+    </>
+  );
+}
+
+// ---------- Hoa đồng tiền ----------
+function Gerbera({ stage }: { stage: number }) {
+  const top = stage === 3 ? 66 : 50;
+  return (
+    <>
+      <Soil />
+      {/* cụm lá sát gốc */}
+      <Leaf x={60} y={126} len={stage === 2 ? 30 : 28} w={8.5} rot={-72} fill={C.leaf2} vein={C.leaf3} />
+      <Leaf x={60} y={126} len={stage === 2 ? 30 : 28} w={8.5} rot={70} fill={C.leaf1} vein={C.leaf2} />
+      <Leaf x={60} y={126} len={stage === 2 ? 26 : 24} w={7.5} rot={-38} fill={C.leaf3} vein={C.leaf2} />
+      <Leaf x={60} y={126} len={stage === 2 ? 26 : 24} w={7.5} rot={36} fill={C.leaf2} vein={C.leaf3} />
+      {stage === 2 && <Leaf x={60} y={126} len={20} w={6} rot={2} fill={C.leaf1} vein={C.leaf2} />}
+      {stage >= 3 && <path d={`M60 124 C58 106 62 ${top + 22} 60 ${top}`} stroke={C.leaf2} strokeWidth={2.6} fill="none" strokeLinecap="round" />}
+      {stage === 3 && (
+        <>
+          <ellipse cx={60} cy={top - 4} rx={5} ry={6.5} fill={C.gerbera2} />
+          {[-40, 0, 40].map((r) => (
+            <Leaf key={r} x={60} y={top + 1} len={8} w={3} rot={r} fill={C.leaf3} />
+          ))}
+        </>
+      )}
+      {stage === 4 && (
+        <g>
+          {Array.from({ length: 20 }).map((_, i) => (
+            <Leaf key={`o${i}`} x={60} y={top - 8} len={22} w={3.8} rot={i * 18} fill={C.gerbera} />
+          ))}
+          {Array.from({ length: 20 }).map((_, i) => (
+            <Leaf key={`i${i}`} x={60} y={top - 8} len={13} w={2.8} rot={i * 18 + 9} fill={C.gerbera2} />
+          ))}
+          <circle cx={60} cy={top - 8} r={6.2} fill={C.pollen} />
+          <circle cx={60} cy={top - 8} r={3.6} fill={C.trunk} />
+        </g>
+      )}
+    </>
+  );
+}
+
+// ---------- Hoa hồng ----------
+function RoseLeaves({ x, y, side }: { x: number; y: number; side: 1 | -1 }) {
+  return (
+    <g>
+      <path d={`M${x} ${y} L${x + side * 13} ${y - 7}`} stroke={C.leaf3} strokeWidth={1.4} strokeLinecap="round" />
+      <Leaf x={x + side * 13} y={y - 7} len={10} w={4.8} rot={side * 62} fill={C.leaf2} vein={C.leaf3} />
+      <Leaf x={x + side * 8} y={y - 4.5} len={8} w={4} rot={side * 20} fill={C.leaf1} />
+      <Leaf x={x + side * 8} y={y - 4.5} len={8} w={4} rot={side * 118} fill={C.leaf2} />
+    </g>
+  );
+}
+
+function Thorns({ ys }: { ys: number[] }) {
+  return (
+    <>
+      {ys.map((y, i) => (
+        <path key={y} d={i % 2 ? `M60.5 ${y} l3.6 -1.4 l-3.6 -1.6 Z` : `M59.5 ${y} l-3.6 -1.4 l3.6 -1.6 Z`} fill={C.leaf3} />
+      ))}
+    </>
+  );
+}
+
+function Rose({ stage }: { stage: number }) {
+  const top = stage === 2 ? 86 : stage === 3 ? 62 : 56;
+  return (
+    <>
+      <Soil />
+      <path d={`M60 126 C59 110 61 ${top + 24} 60 ${top}`} stroke={C.leaf3} strokeWidth={3} fill="none" strokeLinecap="round" />
+      <Thorns ys={stage === 2 ? [116, 104] : [118, 108, 96, 84, 74]} />
+      <RoseLeaves x={60} y={stage === 2 ? 112 : 108} side={-1} />
+      <RoseLeaves x={60} y={stage === 2 ? 100 : 94} side={1} />
+      {stage >= 3 && <RoseLeaves x={60} y={80} side={-1} />}
+      {stage === 2 && <Leaf x={60} y={88} len={12} w={5} rot={0} fill={C.leaf1} />}
+      {stage === 3 && (
+        <>
+          <path d={`M60 ${top + 2} C52 ${top - 4} 54 ${top - 16} 60 ${top - 19} C66 ${top - 16} 68 ${top - 4} 60 ${top + 2} Z`} fill={C.rose2} />
+          <path d={`M60 ${top - 19} C63 ${top - 14} 64 ${top - 6} 60 ${top + 1}`} stroke={C.rose} strokeWidth={1.6} fill="none" />
+          <Leaf x={60} y={top + 2} len={12} w={3.6} rot={-34} fill={C.leaf2} />
+          <Leaf x={60} y={top + 2} len={12} w={3.6} rot={32} fill={C.leaf3} />
+        </>
+      )}
+      {stage === 4 && (
+        <g>
+          {/* nụ phụ */}
+          <path d="M60 88 C66 84 70 78 73 70" stroke={C.leaf3} strokeWidth={1.8} fill="none" strokeLinecap="round" />
+          <path d="M73 71 C69 67 70 60 73 58 C76 60 77 67 73 71 Z" fill={C.rose2} />
+          <Leaf x={73} y={71} len={7} w={2.6} rot={-30} fill={C.leaf2} />
+          <Leaf x={73} y={71} len={7} w={2.6} rot={30} fill={C.leaf2} />
+          {/* đài hoa */}
+          <Leaf x={60} y={top} len={12} w={3.6} rot={-118} fill={C.leaf2} />
+          <Leaf x={60} y={top} len={12} w={3.6} rot={118} fill={C.leaf3} />
+          {/* bông hồng nở: các lớp cánh */}
+          <circle cx={60} cy={top - 13} r={15} fill={C.rose2} />
+          <Leaf x={60} y={top - 6} len={17} w={9} rot={-62} fill={C.rose2} />
+          <Leaf x={60} y={top - 6} len={17} w={9} rot={62} fill={C.rose2} />
+          <path d={`M45 ${top - 12} C45 ${top + 2} 75 ${top + 2} 75 ${top - 12} C69 ${top - 5} 51 ${top - 5} 45 ${top - 12} Z`} fill={C.rose} />
+          <circle cx={60} cy={top - 16} r={8.5} fill={C.rose} />
+          <path d={`M54 ${top - 15} C54 ${top - 23} 66 ${top - 23} 66 ${top - 15} C66 ${top - 10} 58 ${top - 10} 58 ${top - 15} C58 ${top - 18} 62 ${top - 18} 62 ${top - 15}`} stroke={C.rose2} strokeWidth={1.6} fill="none" strokeLinecap="round" />
+          <path d={`M47 ${top - 10} C52 ${top - 6} 68 ${top - 6} 73 ${top - 10}`} stroke={C.rose2} strokeWidth={1.2} fill="none" strokeOpacity={0.7} />
+        </g>
+      )}
+    </>
+  );
+}
+
 /** Lá rụng nằm dưới gốc khi cây héo rõ */
 function FallenLeaves() {
   return (
@@ -315,11 +619,17 @@ export function Plant({
   const st = Math.max(0, Math.min(4, Math.round(stage)));
   let body;
   if (st === 0) body = <Seed />;
+  else if (st === 1 && species === 'xuong-rong') body = <Cactus stage={1} />;
   else if (st === 1) body = <Sprout />;
   else if (species === 'sen') body = <Lotus stage={st} />;
   else if (species === 'ly') body = <Lily stage={st} />;
   else if (species === 'linh-lan') body = <LilyOfValley stage={st} />;
   else if (species === 'tan-tron') body = <RoundTree stage={st} />;
+  else if (species === 'la-kim') body = <Conifer stage={st} />;
+  else if (species === 'xuong-rong') body = <Cactus stage={st} />;
+  else if (species === 'huong-duong') body = <Sunflower stage={st} />;
+  else if (species === 'dong-tien') body = <Gerbera stage={st} />;
+  else if (species === 'hong') body = <Rose stage={st} />;
   else body = <Pine stage={st} />;
   // Hạt giống nằm dưới đất nên không rũ; từ lúc nảy mầm trở đi mới thấy héo
   const droop = st > 0 ? WILT_DROOP[wilt] : '';
