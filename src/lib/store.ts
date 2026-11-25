@@ -36,6 +36,8 @@ interface Store extends Collections {
   stale: boolean;
   /** Database đã có các cột của giai đoạn 3 (003_gd3.sql) chưa */
   gd3: boolean;
+  /** Database đã có phần của bản 2 (005_v2.sql) chưa: việc mỗi ngày, cây mới, Focus nghi thức, trò chuyện với AI */
+  gd5: boolean;
   toasts: Toast[];
 
   init: () => Promise<void>;
@@ -56,6 +58,8 @@ interface Store extends Collections {
   refreshNotifications: () => Promise<void>;
   /** Đánh dấu đã đọc: một số thông báo, hoặc tất cả */
   markRead: (ids: string[] | 'all') => void;
+  /** Xóa toàn bộ cuộc trò chuyện với Trợ lý AI */
+  clearChat: () => void;
 
   toast: (text: string, kind?: Toast['kind']) => void;
   dismissToast: (id: number) => void;
@@ -74,7 +78,25 @@ const EMPTY: Collections = {
   journals: [],
   weekly_reviews: [],
   notifications: [],
+  chat_messages: [],
 };
+
+/** Số tin nhắn gần nhất với Trợ lý AI được tải về */
+const CHAT_LIMIT = 200;
+
+/** Cột chỉ có sau khi chạy 005_v2.sql: chưa chạy thì bỏ ra trước khi ghi để không bị lỗi */
+const V2_COLUMNS: Partial<Record<TableName | 'profiles', string[]>> = {
+  tasks: ['parent_id'],
+  focus_sessions: ['intention', 'steps', 'rating', 'reflection'],
+  profiles: ['ai_context'],
+};
+function stripV2<T extends object>(table: TableName | 'profiles', row: T, gd5: boolean): T {
+  const cols = V2_COLUMNS[table];
+  if (gd5 || !cols) return row;
+  const out = { ...row } as Record<string, unknown>;
+  for (const c of cols) delete out[c];
+  return out as T;
+}
 
 /** Số thông báo gần nhất được tải về (chuông trong app) */
 const NOTIFICATION_LIMIT = 60;
@@ -118,13 +140,22 @@ async function loadCloud(uid: string): Promise<Snapshot> {
       if (t === 'focus_sessions') q = q.gte('started_at', since);
       if (t === 'journals') q = q.gte('date', addDays(todayISO(), -400));
       if (t === 'notifications') return q.gte('created_at', `${addDays(todayISO(), -30)}T00:00:00Z`).order('created_at', { ascending: false }).limit(NOTIFICATION_LIMIT);
+      if (t === 'chat_messages') return q.order('created_at', { ascending: false }).limit(CHAT_LIMIT);
       return q;
     }),
   );
   const snap = { profile } as Snapshot;
   results.forEach((res, i) => {
+    const t = TABLE_NAMES[i];
+    // Chưa chạy 005_v2.sql thì chưa có bảng chat_messages: coi như trống, không làm hỏng cả lần tải
+    if (res.error && t === 'chat_messages') {
+      snap.chat_messages = [];
+      return;
+    }
     if (res.error) throw res.error;
-    (snap as unknown as Record<string, unknown>)[TABLE_NAMES[i]] = res.data ?? [];
+    let rows = (res.data ?? []) as unknown[];
+    if (t === 'chat_messages') rows = rows.reverse();
+    (snap as unknown as Record<string, unknown>)[t] = rows;
   });
   return snap;
 }
@@ -137,6 +168,15 @@ async function probeGd3(): Promise<boolean> {
     sb.from('goals').select('final_stage').limit(1),
   ]);
   const missing = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /column/i.test(e.message ?? ''));
+  return !missing(a.error) && !missing(b.error);
+}
+
+/** Kiểm tra đã chạy 005_v2.sql chưa (có bảng chat_messages và cột tasks.parent_id chưa). Lỗi mạng thì coi như đã chạy. */
+async function probeGd5(): Promise<boolean> {
+  const sb = supabase!;
+  const [a, b] = await Promise.all([sb.from('chat_messages').select('id').limit(1), sb.from('tasks').select('parent_id').limit(1)]);
+  const missing = (e: { code?: string; message?: string } | null) =>
+    !!e && (['42703', '42P01', 'PGRST204', 'PGRST205'].includes(e.code ?? '') || /column|relation|schema cache|does not exist/i.test(e.message ?? ''));
   return !missing(a.error) && !missing(b.error);
 }
 
@@ -183,9 +223,9 @@ export const useStore = create<Store>((set, get) => {
     const cached = readJSON<Snapshot>(cacheKey(uid));
     if (cached) applySnapshot(cached, { stale: true });
     try {
-      const [snap, gd3] = await Promise.all([loadCloud(uid), probeGd3().catch(() => true)]);
+      const [snap, gd3, gd5] = await Promise.all([loadCloud(uid), probeGd3().catch(() => true), probeGd5().catch(() => true)]);
       lastLoad = Date.now();
-      applySnapshot(snap, { stale: false, gd3 });
+      applySnapshot(snap, { stale: false, gd3, gd5 });
     } catch (err) {
       console.error('[Kairos] Lỗi tải dữ liệu:', err);
       if (!cached) set({ status: 'error' });
@@ -202,6 +242,7 @@ export const useStore = create<Store>((set, get) => {
     online: typeof navigator === 'undefined' ? true : navigator.onLine,
     stale: false,
     gd3: true,
+    gd5: true,
     toasts: [],
 
     init: async () => {
@@ -255,7 +296,7 @@ export const useStore = create<Store>((set, get) => {
     enterDemo: () => {
       localStorage.setItem(MODE_KEY, 'demo');
       const snap = readJSON<Snapshot>(DEMO_KEY) ?? buildSeed();
-      set({ mode: 'demo', userId: DEMO_USER, email: null, stale: false, gd3: true });
+      set({ mode: 'demo', userId: DEMO_USER, email: null, stale: false, gd3: true, gd5: true });
       applySnapshot(snap);
     },
 
@@ -282,9 +323,9 @@ export const useStore = create<Store>((set, get) => {
       if (mode !== 'cloud' || !userId || !online) return;
       try {
         await writeQueue; // chờ các lệnh ghi đang dở xong đã
-        const [snap, gd3] = await Promise.all([loadCloud(userId), probeGd3().catch(() => get().gd3)]);
+        const [snap, gd3, gd5] = await Promise.all([loadCloud(userId), probeGd3().catch(() => get().gd3), probeGd5().catch(() => get().gd5)]);
         lastLoad = Date.now();
-        applySnapshot(snap, { stale: false, gd3 });
+        applySnapshot(snap, { stale: false, gd3, gd5 });
       } catch (err) {
         console.error('[Kairos] Lỗi đồng bộ:', err);
       }
@@ -299,7 +340,7 @@ export const useStore = create<Store>((set, get) => {
         created_at: new Date().toISOString(),
       } as unknown as Tables[typeof table];
       set((s) => ({ [table]: [...s[table], full] }) as unknown as Partial<Store>);
-      queueWrite(() => supabase!.from(table).insert(full));
+      queueWrite(() => supabase!.from(table).insert(stripV2(table, full as object, get().gd5)));
       return full;
     },
 
@@ -311,7 +352,9 @@ export const useStore = create<Store>((set, get) => {
             [table]: (s[table] as { id: string }[]).map((r) => (r.id === id ? { ...r, ...patch } : r)),
           }) as unknown as Partial<Store>,
       );
-      queueWrite(() => supabase!.from(table).update(patch as Record<string, unknown>).eq('id', id));
+      const clean = stripV2(table, patch as Record<string, unknown>, get().gd5);
+      if (Object.keys(clean).length === 0) return;
+      queueWrite(() => supabase!.from(table).update(clean).eq('id', id));
     },
 
     remove: (table, id) => {
@@ -326,7 +369,12 @@ export const useStore = create<Store>((set, get) => {
           // Phiên focus vẫn giữ (để còn thống kê), chỉ bỏ liên kết tới việc đã xóa
           next.focus_sessions = (next.focus_sessions ?? s.focus_sessions).map((f) => (f.task_id && ids.has(f.task_id) ? { ...f, task_id: null } : f));
         };
-        if (table === 'tasks') dropTasks(new Set([id]));
+        // Xóa một đầu việc thì các việc mỗi ngày của nó cũng bị xóa
+        if (table === 'tasks') {
+          const ids = new Set([id, ...s.tasks.filter((t) => t.parent_id === id).map((t) => t.id)]);
+          next.tasks = s.tasks.filter((t) => !ids.has(t.id));
+          dropTasks(ids);
+        }
         if (table === 'goals') {
           const ids = new Set(s.tasks.filter((t) => t.goal_id === id).map((t) => t.id));
           next.tasks = s.tasks.filter((t) => t.goal_id !== id);
@@ -342,7 +390,9 @@ export const useStore = create<Store>((set, get) => {
       const { profile } = get();
       if (!profile || !canWrite()) return;
       set({ profile: { ...profile, ...patch } });
-      queueWrite(() => supabase!.from('profiles').update(patch).eq('id', profile.id));
+      const clean = stripV2('profiles', patch, get().gd5);
+      if (Object.keys(clean).length === 0) return;
+      queueWrite(() => supabase!.from('profiles').update(clean).eq('id', profile.id));
     },
 
     toggleTask: (task, date) => {
@@ -410,6 +460,14 @@ export const useStore = create<Store>((set, get) => {
       if (s.mode !== 'cloud' || !s.online || !supabase) return;
       const sb = supabase;
       queueWrite(() => (ids === 'all' ? sb.from('notifications').update({ read_at: now }).is('read_at', null) : sb.from('notifications').update({ read_at: now }).in('id', [...target])));
+    },
+
+    clearChat: () => {
+      const s = get();
+      if (!canWrite() || s.chat_messages.length === 0) return;
+      set({ chat_messages: [] });
+      // Supabase cần một điều kiện khi xóa nhiều dòng; RLS đảm bảo chỉ xóa tin nhắn của chính mình
+      queueWrite(() => supabase!.from('chat_messages').delete().gte('created_at', '2000-01-01T00:00:00Z'));
     },
 
     toast: (text, kind = 'info') => {

@@ -34,6 +34,17 @@ export default function Garden() {
   const [showSpecies, setShowSpecies] = useState(false);
 
   const plants = useMemo(() => livePlants(d, cycle, today), [d, cycle, today]);
+  // 💧 mỗi cây nhận được hôm nay
+  const todayDrops = useMemo(() => {
+    const goalOf = new Map(d.tasks.map((t) => [t.id, t.goal_id]));
+    const m = new Map<string, number>();
+    for (const c of d.task_completions) {
+      if (c.date !== today) continue;
+      const g = goalOf.get(c.task_id);
+      if (g) m.set(g, (m.get(g) ?? 0) + c.points);
+    }
+    return m;
+  }, [d.tasks, d.task_completions, today]);
   const past = useMemo(() => pastCycles(d.cycles).map((c) => ({ cycle: c, plants: memorialPlants(c, d) })), [d]);
 
   // Hiệu ứng: so với lần xem trước, cây nào vừa lên giai đoạn / vừa tươi lại. Xem xong thì ghi nhớ trạng thái mới.
@@ -43,7 +54,7 @@ export default function Garden() {
     writeSeen(plants);
     // Chỉ chạy khi mở trang hoặc khi trạng thái cây thực sự đổi
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plants.map((p) => `${p.goal.id}:${p.growth.stage}:${p.health.wilt}`).join('|')]);
+  }, [plants.map((p) => `${p.goal.id}:${p.growth.stage}:${p.health.wilt}:${p.growth.earned}`).join('|')]);
 
   const sel = selected ? plants.find((p) => p.goal.id === selected) ?? null : null;
   const thirsty = plants.filter((p) => p.health.wilt > 0).sort((a, b) => b.health.dryDays - a.health.dryDays);
@@ -76,11 +87,14 @@ export default function Garden() {
               wilt: p.health.wilt,
               title: p.goal.title,
               sub: `${stageNames(p.goal)[p.growth.stage]} · ${Math.round(p.growth.pct * 100)}%`,
-              badge: p.health.wilt > 0 && (
-                <span className={cx('mt-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', p.health.wilt === 2 ? 'bg-danger text-white dark:text-black' : 'bg-highsoft text-high')}>
-                  {p.health.wilt === 2 ? 'Héo rõ' : 'Hơi héo'} · {p.health.dryDays} ngày
-                </span>
-              ),
+              badge:
+                p.health.wilt > 0 ? (
+                  <span className={cx('mt-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', p.health.wilt === 2 ? 'bg-danger text-white dark:text-black' : 'bg-highsoft text-high')}>
+                    {p.health.wilt === 2 ? 'Héo rõ' : 'Hơi héo'} · {p.health.dryDays} ngày
+                  </span>
+                ) : todayDrops.get(p.goal.id) ? (
+                  <span className="mt-1 rounded-full bg-water/15 px-2 py-0.5 text-[11px] font-semibold text-ink">+{todayDrops.get(p.goal.id)} 💧 hôm nay</span>
+                ) : null,
               event: events.get(p.goal.id),
               onClick: () => setSelected(p.goal.id),
             }))}
@@ -118,21 +132,26 @@ export default function Garden() {
 
         <Card className="p-4">
           <h2 className="text-base font-bold">Cây lớn nhờ đâu?</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted">Mỗi việc bạn tick xong là một lần tưới cây của mục tiêu đó.</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted">
+            Mỗi việc bạn tick xong, dù nhỏ đến đâu, là một lần tưới cây của mục tiêu đó. Việc đòn bẩy cao luôn tưới nhiều hơn.
+          </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="rounded-2xl bg-highsoft p-3">
               <p className="flex items-center gap-1 text-sm font-bold text-high">
-                <Zap size={15} fill="currentColor" /> Việc 20%
+                <Zap size={15} fill="currentColor" /> Đầu việc 20%
               </p>
               <p className="mt-1 text-2xl leading-none font-bold text-high">+3 💧</p>
-              <p className="mt-1.5 text-[13px] leading-snug text-muted">Việc đòn bẩy cao giúp cây lớn nhanh gấp 3.</p>
+              <p className="mt-1.5 text-[13px] leading-snug text-muted">Mỗi việc nhỏ của nó: +2 💧</p>
             </div>
             <div className="rounded-2xl bg-surface2 p-3">
-              <p className="text-sm font-bold text-ink">Việc 80%</p>
+              <p className="text-sm font-bold text-ink">Đầu việc 80%</p>
               <p className="mt-1 text-2xl leading-none font-bold text-ink">+1 💧</p>
-              <p className="mt-1.5 text-[13px] leading-snug text-muted">Vẫn cần làm, nhưng cây lớn chậm hơn.</p>
+              <p className="mt-1.5 text-[13px] leading-snug text-muted">Mỗi việc nhỏ của nó: +1 💧</p>
             </div>
           </div>
+          <p className="mt-2.5 text-[13px] leading-relaxed text-muted">
+            Chia đầu việc thành <b>việc mỗi ngày</b> (ở Mục tiêu, hoặc nhờ Trợ lý AI) thì ngày nào cũng có việc nhỏ để tick và cây được tưới đều. Focus không tưới cây: cây chỉ lớn khi việc thật sự xong.
+          </p>
           <div className="mt-3 grid grid-cols-3 gap-2">
             {([0, 1, 2] as const).map((w) => (
               <div key={w} className="flex flex-col items-center rounded-2xl bg-surface2 pb-2">

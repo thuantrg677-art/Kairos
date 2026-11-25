@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useStore } from '@/lib/store';
 import { startPwa } from '@/lib/pwa';
@@ -7,8 +7,9 @@ import { Button, Toasts } from '@/components/ui';
 import { LogoMark } from '@/components/Logo';
 import { AppShell } from '@/components/AppShell';
 import Login from '@/pages/Login';
-import Onboarding from '@/pages/Onboarding';
+import Welcome from '@/pages/Welcome';
 import Today from '@/pages/Today';
+import Assistant from '@/pages/Assistant';
 import Goals from '@/pages/Goals';
 import Inbox from '@/pages/Inbox';
 import Garden from '@/pages/Garden';
@@ -19,19 +20,15 @@ import WeekReview from '@/pages/WeekReview';
 import JournalPage from '@/pages/JournalPage';
 import History from '@/pages/History';
 
-// Hướng dẫn sử dụng ít khi mở nên tải riêng, không làm nặng lần mở app
-const Guide = lazy(() => import('@/pages/Guide'));
+// Trang nguyên lý Pareto ít khi mở nên tải riêng, không làm nặng lần mở app
+const Pareto = lazy(() => import('@/pages/Pareto'));
 
 let started = false;
 
 export default function App() {
   const status = useStore((s) => s.status);
   const profile = useStore((s) => s.profile);
-  const hasVisions = useStore((s) => s.visions.length > 0);
   const location = useLocation();
-  // Người mới: xem Hướng dẫn sử dụng trước phần thiết lập. Đã có mục tiêu dài hạn (đang thiết lập dở) thì bỏ qua.
-  const [guideDone, setGuideDone] = useState(false);
-  const needsGuide = !guideDone && !profile?.settings?.guide_seen_at && !hasVisions;
 
   // Khởi động một lần: kiểm tra đăng nhập, tải dữ liệu, bật phần PWA
   useEffect(() => {
@@ -75,17 +72,16 @@ export default function App() {
     );
   } else if (status === 'signed-out') {
     screen = <Login />;
-  } else if (location.pathname === '/huong-dan') {
-    // Mở lại hướng dẫn từ Cài đặt (hoặc từ phần thiết lập)
-    screen = <Guide mode="replay" />;
   } else if (!profile?.onboarded_at) {
-    screen = needsGuide ? <Guide mode="first" onFinish={() => setGuideDone(true)} /> : <Onboarding />;
+    // Người mới: vào thẳng cuộc trò chuyện làm quen với Trợ lý AI
+    screen = <Welcome />;
   } else {
     screen = (
       <AppShell>
         <Routes>
           <Route path="/" element={<Today />} />
           <Route path="/muc-tieu" element={<Goals />} />
+          <Route path="/tro-ly" element={<Assistant />} />
           <Route path="/focus" element={<Focus />} />
           <Route path="/vuon" element={<Garden />} />
           <Route path="/tong-quan" element={<Overview />} />
@@ -94,6 +90,8 @@ export default function App() {
           <Route path="/tong-quan/lich-su" element={<History />} />
           <Route path="/nhap" element={<Inbox />} />
           <Route path="/cai-dat" element={<Settings />} />
+          <Route path="/pareto" element={<Pareto />} />
+          <Route path="/huong-dan" element={<Navigate to="/pareto" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AppShell>

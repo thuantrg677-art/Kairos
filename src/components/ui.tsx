@@ -167,19 +167,23 @@ export function Sheet({
   );
 }
 
-/** Nhãn đòn bẩy: việc 20% nổi bật, việc 80% hiển thị bình thường. Luôn cho thấy số 💧. */
-export function LeverageBadge({ leverage, compact }: { leverage: 'high' | 'normal'; compact?: boolean }) {
+/**
+ * Nhãn đòn bẩy: việc 20% nổi bật, việc 80% hiển thị bình thường. Luôn cho thấy số 💧.
+ * `step` = việc mỗi ngày (việc nhỏ nằm dưới một đầu việc): +2 💧 nếu thuộc việc 20%, +1 💧 nếu thuộc việc 80%.
+ */
+export function LeverageBadge({ leverage, compact, step }: { leverage: 'high' | 'normal'; compact?: boolean; step?: boolean }) {
+  const pts = step ? (leverage === 'high' ? 2 : 1) : leverage === 'high' ? 3 : 1;
   if (leverage === 'high') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-highsoft px-2 py-0.5 text-xs font-bold whitespace-nowrap text-high">
         <Zap size={12} fill="currentColor" aria-hidden />
-        {compact ? '20%' : 'Việc 20%'} · +3 💧
+        {compact || step ? '20%' : 'Việc 20%'} · +{pts} 💧
       </span>
     );
   }
   return (
     <span className="inline-flex items-center rounded-full bg-surface2 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-muted">
-      {compact ? '' : 'Việc 80% · '}+1 💧
+      {compact || step ? '' : 'Việc 80% · '}+{pts} 💧
     </span>
   );
 }

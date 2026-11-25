@@ -1,353 +1,376 @@
-// "Focus": đồng hồ 25/50/90/tự đặt + giờ nghỉ, mầm cây lớn dần theo thời gian, âm thanh nền,
-// nhắc khi rời app và thống kê giờ focus. Đồng hồ nằm ở src/lib/focus.ts nên vẫn chạy khi chuyển màn hình.
+// "Focus" (bản 2): một nghi thức nhỏ để bắt đầu tập trung. Không tính điểm, không tưới cây.
+//   Trước phiên: phiên này bạn làm gì? Có muốn AI gợi ý các bước không?
+//   Trong phiên: chỉ có Bắt đầu và Dừng (đồng hồ đếm lên), các bước để tự đánh dấu.
+//   Sau phiên: bạn học có hiệu quả không?
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bell, Check, ChevronDown, Coffee, Pause, Play, Square } from 'lucide-react';
+import { Check, ChevronDown, LoaderCircle, Play, RefreshCw, Sparkles, Square, Target, X } from 'lucide-react';
 import { useData, useStore } from '@/lib/store';
-import { announceGrowth, plantSnapshot } from '@/lib/garden';
-import { BREAKS, fmtClock, PRESETS, useFocus, useFocusClock } from '@/lib/focus';
-import { formatDuration, todayISO } from '@/lib/dates';
-import { itemsForDate, otherOpenTasks, taskPoints } from '@/lib/logic';
-import type { Goal, Task } from '@/lib/types';
-import { Button, Card, Chip, cx, LeverageBadge, Sheet, Switch } from '@/components/ui';
+import { fmtClock, useFocus, useFocusElapsed } from '@/lib/focus';
+import { useAI } from '@/lib/ai';
+import { addDays, formatDM, formatDuration, mondayOf, todayISO, toISO } from '@/lib/dates';
+import { itemsForDate } from '@/lib/logic';
+import type { FocusSession } from '@/lib/types';
+import { Button, Card, cx, LeverageBadge } from '@/components/ui';
 import { PageHeader } from '@/components/AppShell';
-import { Plant } from '@/components/Plant';
 import { SoundMixer } from '@/components/SoundMixer';
-import { FocusStats } from '@/components/FocusStats';
+import { QuotaHint } from '@/components/AI';
 
-/** Mầm cây lớn theo % thời gian: hạt → nảy mầm → cây non → ra nụ → nở hoa khi hết giờ */
-function stageFor(progress: number, phase: string): number {
-  if (phase === 'done' || phase === 'break') return 4;
-  if (phase !== 'focus') return 0;
-  if (progress >= 1) return 4;
-  if (progress >= 0.6) return 3;
-  if (progress >= 0.3) return 2;
-  if (progress >= 0.04) return 1;
-  return 0;
+const RATINGS = [
+  { v: 3, emoji: '😊', label: 'Hiệu quả', ask: 'Điều gì giúp bạn tập trung tốt? Ghi lại để lần sau lặp lại.' },
+  { v: 2, emoji: '😐', label: 'Tạm được', ask: 'Điều gì sẽ làm phiên sau tốt hơn?' },
+  { v: 1, emoji: '😣', label: 'Chưa hiệu quả', ask: 'Điều gì làm bạn khó tập trung?' },
+] as const;
+
+const AFTER: Record<number, string> = {
+  3: 'Tuyệt! Nhớ điều đã giúp bạn để lặp lại ở phiên sau.',
+  2: 'Ổn rồi. Phiên sau thử chia việc nhỏ hơn hoặc cất điện thoại ra xa nhé.',
+  1: 'Không sao, ai cũng có phiên như vậy. Lần sau thử bắt đầu bằng bước dễ nhất, chỉ 2 phút thôi.',
+};
+
+/** Vòng tròn thở nhẹ phía sau đồng hồ khi đang focus */
+function Pulse({ active }: { active: boolean }) {
+  return (
+    <div className="relative mx-auto flex h-52 w-52 items-center justify-center">
+      <span className={cx('absolute inset-0 rounded-full bg-soft', active && 'k-breathe')} aria-hidden />
+      <span className="absolute inset-6 rounded-full border-2 border-primary/30" aria-hidden />
+      <Target size={40} className="relative text-primary" aria-hidden />
+    </div>
+  );
 }
 
-function TimerRing({ progress, children, tone }: { progress: number; children: ReactNode; tone: 'primary' | 'accent' }) {
-  const r = 128;
-  const c = 2 * Math.PI * r;
+function StepList({ editable }: { editable?: boolean }) {
+  const steps = useFocus((s) => s.steps);
+  const toggle = useFocus((s) => s.toggleStep);
+  const setSteps = useFocus((s) => s.setSteps);
+  const tip = useFocus((s) => s.tip);
+  if (!steps.length) return null;
   return (
-    <div className="relative h-[272px] w-[272px]">
-      <svg viewBox="0 0 272 272" className="absolute inset-0 -rotate-90" aria-hidden>
-        <circle cx={136} cy={136} r={r} fill="none" stroke="var(--k-surface-2)" strokeWidth={10} />
-        <circle
-          cx={136}
-          cy={136}
-          r={r}
-          fill="none"
-          stroke={tone === 'primary' ? 'var(--k-primary)' : 'var(--k-accent)'}
-          strokeWidth={10}
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - progress)}
-          style={{ transition: 'stroke-dashoffset 0.3s linear' }}
+    <div className="w-full max-w-md text-left">
+      <ol className="flex flex-col gap-1.5">
+        {steps.map((x, i) => (
+          <li key={i} className="flex items-center gap-2 rounded-2xl bg-surface2 py-1 pr-1 pl-1">
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={!!x.done}
+              aria-label={x.done ? `Bỏ đánh dấu: ${x.title}` : `Đánh dấu xong: ${x.title}`}
+              onClick={() => toggle(i)}
+              className="flex h-10 w-10 shrink-0 items-center justify-center"
+            >
+              <span className={cx('flex h-6 w-6 items-center justify-center rounded-full border-2 text-[12px] font-bold', x.done ? 'border-primary bg-primary text-onprimary' : 'border-muted/50 text-muted')}>
+                {x.done ? <Check size={14} strokeWidth={3.5} /> : i + 1}
+              </span>
+            </button>
+            <span className={cx('min-w-0 flex-1 text-[14.5px] leading-snug', x.done && 'text-muted line-through')}>
+              {x.title}
+              {x.minutes ? <span className="ml-1 text-xs text-muted">· {x.minutes}′</span> : null}
+            </span>
+            {editable && (
+              <button type="button" aria-label={`Bỏ bước: ${x.title}`} onClick={() => setSteps(steps.filter((_, k) => k !== i), tip)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted">
+                <X size={16} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+      {tip && <p className="mt-2 rounded-2xl bg-soft px-3.5 py-2 text-[13px] leading-snug text-ink">💡 {tip}</p>}
+    </div>
+  );
+}
+
+/** Bước 1–2: chọn việc, gợi ý các bước, bắt đầu */
+function Setup() {
+  const d = useData();
+  const f = useFocus();
+  const ai = useAI();
+  const today = todayISO();
+  // null = chưa trả lời câu hỏi "có muốn AI gợi ý không"; 'yes' = đã lấy gợi ý
+  const [askedSteps, setAskedSteps] = useState<'yes' | null>(f.steps.length ? 'yes' : null);
+  const [showAll, setShowAll] = useState(false);
+  const todays = useMemo(() => itemsForDate(d, today).filter((i) => !i.done), [d, today]);
+  const task = f.taskId ? d.tasks.find((t) => t.id === f.taskId) ?? null : null;
+
+  const suggest = async () => {
+    setAskedSteps('yes');
+    const { result } = await ai.run('focus_steps', { intention: f.intention.trim(), task_id: f.taskId });
+    if (result) f.setSteps(result.steps.map((x) => ({ title: x.title, minutes: x.minutes })), result.tip);
+    else if (!f.steps.length) setAskedSteps(null);
+  };
+
+  const ready = f.intention.trim().length > 0;
+  const shown = showAll ? todays : todays.slice(0, 4);
+
+  return (
+    <div className="flex w-full flex-col items-center">
+      <label className="w-full max-w-md text-left">
+        <span className="mb-1.5 block text-[17px] font-bold text-ink">Phiên này bạn làm gì?</span>
+        <textarea
+          className="k-input resize-none text-[15px]"
+          rows={2}
+          maxLength={300}
+          value={f.intention}
+          onChange={(e) => f.setIntention(e.target.value)}
+          placeholder="Ví dụ: Viết xong phần mở đầu của bài luận"
         />
-      </svg>
-      <div className="absolute inset-[18px] flex items-end justify-center overflow-hidden rounded-full" style={{ background: 'linear-gradient(var(--k-sky-1), var(--k-sky-2))' }}>
-        {children}
+      </label>
+
+      {task && (
+        <div className="mt-2 flex w-full max-w-md items-center gap-2 rounded-2xl bg-soft px-3 py-1.5 text-left text-[13px]">
+          <span className="min-w-0 flex-1 truncate">
+            Gắn với việc: <b>{task.title}</b>
+          </span>
+          <button type="button" className="flex h-8 w-8 items-center justify-center rounded-full text-muted" aria-label="Bỏ gắn việc" onClick={() => f.setTask(null)}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      {!task && todays.length > 0 && (
+        <div className="mt-3 w-full max-w-md text-left">
+          <p className="mb-1.5 text-[13px] font-semibold text-muted">Hoặc chọn một việc hôm nay:</p>
+          <div className="flex flex-col gap-1.5">
+            {shown.map((i) => (
+              <button
+                key={i.task.id}
+                type="button"
+                onClick={() => {
+                  f.setTask(i.task.id, i.task.title);
+                  setAskedSteps(null);
+                }}
+                className="flex min-h-11 items-center gap-2 rounded-2xl border border-line bg-surface px-3 py-1.5 text-left transition hover:bg-surface2"
+              >
+                <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{i.task.title}</span>
+                <LeverageBadge leverage={i.task.leverage} compact step={!!i.task.parent_id} />
+              </button>
+            ))}
+          </div>
+          {todays.length > 4 && (
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1 inline-flex min-h-9 items-center gap-1 text-[13px] font-semibold text-primary">
+              {showAll ? 'Thu gọn' : `Xem thêm ${todays.length - 4} việc`} <ChevronDown size={15} className={cx('transition-transform', showAll && 'rotate-180')} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {ready && askedSteps === null && (
+        <div className="k-fade-in mt-5 w-full max-w-md rounded-3xl border border-line bg-surface2/60 p-4 text-left">
+          <p className="text-[15px] font-bold text-ink">Bạn có muốn AI gợi ý các bước thực hiện không?</p>
+          <p className="mt-0.5 text-[13px] leading-snug text-muted">AI chia việc này thành vài bước cụ thể, bước đầu tiên thật dễ để bắt tay vào ngay.</p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <Button className="flex-1" variant="soft" onClick={suggest}>
+              <Sparkles size={17} /> Có, gợi ý giúp mình
+            </Button>
+            <Button className="flex-1" onClick={f.start}>
+              <Play size={17} fill="currentColor" /> Không, bắt đầu luôn
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {ready && askedSteps === 'yes' && (
+        <div className="k-fade-in mt-5 flex w-full max-w-md flex-col items-center gap-3">
+          {ai.busy && !f.steps.length ? (
+            <p className="flex items-center gap-2 py-6 text-sm text-muted">
+              <LoaderCircle size={20} className="animate-spin text-primary" /> AI đang chia việc thành từng bước…
+            </p>
+          ) : (
+            <>
+              <p className="w-full text-left text-[15px] font-bold text-ink">Các bước cho phiên này</p>
+              <StepList editable />
+              <div className="flex w-full gap-2">
+                <Button variant="outline" onClick={suggest} disabled={!!ai.busy} aria-label="Gợi ý cách khác">
+                  {ai.busy ? <LoaderCircle size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                </Button>
+                <Button size="lg" className="flex-1" onClick={f.start}>
+                  <Play size={20} fill="currentColor" /> Bắt đầu focus
+                </Button>
+              </div>
+              <QuotaHint />
+            </>
+          )}
+        </div>
+      )}
+
+      {!ready && <p className="mt-5 max-w-md text-[13px] leading-relaxed text-muted">Viết một câu về điều bạn định làm. Nói rõ việc cần xong giúp bạn bắt đầu dễ hơn và biết khi nào là xong.</p>}
+    </div>
+  );
+}
+
+/** Bước 3: đang tập trung */
+function Running() {
+  const f = useFocus();
+  const elapsed = useFocusElapsed();
+  return (
+    <div className="flex w-full flex-col items-center">
+      <Pulse active />
+      <p className="-mt-2 text-sm font-semibold text-primary">Đang tập trung</p>
+      <p className="text-[56px] leading-none font-bold tracking-tight tabular-nums" aria-live="off">
+        {fmtClock(elapsed)}
+      </p>
+      <p className="mt-3 max-w-md text-[16px] leading-snug font-semibold text-ink">{f.intention}</p>
+      <div className="mt-4 w-full max-w-md">
+        <StepList />
+      </div>
+      <Button size="lg" variant="outline" className="mt-5 w-full max-w-md" onClick={f.stop}>
+        <Square size={18} /> Dừng focus
+      </Button>
+    </div>
+  );
+}
+
+/** Bước 4: sau phiên */
+function Reflect() {
+  const f = useFocus();
+  const elapsed = useFocusElapsed();
+  const [rating, setRating] = useState<number | null>(null);
+  const [note, setNote] = useState('');
+  const doneSteps = f.steps.filter((x) => x.done).length;
+  const save = (r: number | null) => {
+    f.finish(r, r ? note : '');
+    useStore.getState().toast(r ? AFTER[r] : 'Đã lưu phiên focus.', 'success');
+  };
+  return (
+    <div className="flex w-full flex-col items-center">
+      <p className="text-sm font-semibold text-primary">Bạn vừa tập trung {formatDuration(elapsed / 60000)}</p>
+      <p className="mt-1 max-w-md text-[15px] leading-snug text-ink">{f.intention}</p>
+      {f.steps.length > 0 && (
+        <p className="mt-1 text-[13px] text-muted">
+          Đã xong {doneSteps}/{f.steps.length} bước
+        </p>
+      )}
+      <h2 className="mt-5 text-[19px] font-bold text-ink">Phiên vừa rồi bạn học có hiệu quả không?</h2>
+      <div className="mt-3 grid w-full max-w-md grid-cols-3 gap-2" role="radiogroup" aria-label="Tự đánh giá phiên focus">
+        {RATINGS.map((r) => (
+          <button
+            key={r.v}
+            type="button"
+            role="radio"
+            aria-checked={rating === r.v}
+            onClick={() => setRating(r.v)}
+            className={cx('flex flex-col items-center gap-1 rounded-2xl border-2 px-1 py-3 transition active:scale-[.97]', rating === r.v ? 'border-primary bg-soft' : 'border-line bg-surface')}
+          >
+            <span className="text-3xl leading-none" aria-hidden>
+              {r.emoji}
+            </span>
+            <span className="text-[13px] font-semibold text-ink">{r.label}</span>
+          </button>
+        ))}
+      </div>
+      {rating !== null && (
+        <label className="k-fade-in mt-4 w-full max-w-md text-left">
+          <span className="mb-1.5 block text-sm font-semibold">{RATINGS.find((r) => r.v === rating)!.ask} (không bắt buộc)</span>
+          <textarea className="k-input resize-none" rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Viết vài chữ cho chính mình" />
+        </label>
+      )}
+      <div className="mt-4 flex w-full max-w-md gap-2">
+        <Button variant="ghost" onClick={() => save(null)}>
+          Bỏ qua
+        </Button>
+        <Button size="lg" className="flex-1" disabled={rating === null} onClick={() => save(rating)}>
+          Lưu phiên
+        </Button>
       </div>
     </div>
   );
 }
 
-/** Danh sách việc để chọn: việc hôm nay trước, rồi các việc một lần khác */
-function TaskPicker({ open, onClose, value, onPick }: { open: boolean; onClose: () => void; value: string | null; onPick: (id: string | null) => void }) {
-  const d = useData();
+const RATING_EMOJI = ['', '😣', '😐', '😊'];
+
+/** Các phiên gần đây và tỉ lệ phiên hiệu quả trong tuần */
+function Recent() {
+  const sessions = useStore((s) => s.focus_sessions);
+  const tasks = useStore((s) => s.tasks);
   const today = todayISO();
-  const groups = useMemo(() => {
-    const todayItems = itemsForDate(d, today).filter((i) => !i.done);
-    const others = otherOpenTasks(d, today);
-    return [
-      { title: 'Việc hôm nay', items: todayItems.map((i) => ({ task: i.task, goal: i.goal })) },
-      { title: 'Việc khác chưa xong', items: others },
-    ].filter((g) => g.items.length > 0);
-  }, [d, today]);
-
-  const Row = ({ task, goal }: { task: Task | null; goal: Goal | null }) => {
-    const selected = (task?.id ?? null) === value;
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          onPick(task?.id ?? null);
-          onClose();
-        }}
-        className={cx('flex min-h-14 w-full items-center gap-3 rounded-2xl px-3 py-2 text-left transition', selected ? 'bg-soft' : 'hover:bg-surface2')}
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-semibold">{task?.title ?? 'Không gắn việc cụ thể'}</p>
-          {task ? (
-            <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <LeverageBadge leverage={task.leverage} compact />
-              {goal && <span className="truncate">{goal.title}</span>}
-            </p>
-          ) : (
-            <p className="mt-0.5 text-xs text-muted">Vẫn được tính giờ focus, nhưng không vào mục tiêu nào.</p>
-          )}
-        </div>
-        {selected && <Check size={20} className="shrink-0 text-primary" />}
-      </button>
-    );
-  };
-
+  const recent = useMemo(() => [...sessions].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 8), [sessions]);
+  const week = useMemo(() => {
+    const mon = mondayOf(today);
+    const list = sessions.filter((f) => {
+      const d = toISO(new Date(f.started_at));
+      return d >= mon && d <= addDays(mon, 6);
+    });
+    const rated = list.filter((f) => f.rating);
+    return { count: list.length, min: list.reduce((n, f) => n + f.actual_sec / 60, 0), good: rated.filter((f) => f.rating === 3).length, rated: rated.length };
+  }, [sessions, today]);
+  if (!recent.length) return null;
+  const label = (f: FocusSession) => f.intention || tasks.find((t) => t.id === f.task_id)?.title || 'Phiên focus';
   return (
-    <Sheet open={open} onClose={onClose} title="Focus vào việc gì?">
-      {groups.map((g) => (
-        <div key={g.title} className="mb-3">
-          <p className="mb-1 px-1 text-[13px] font-bold tracking-wide text-muted uppercase">{g.title}</p>
-          {g.items.map((it) => (
-            <Row key={it.task.id} task={it.task} goal={it.goal} />
-          ))}
-        </div>
-      ))}
-      <Row task={null} goal={null} />
-    </Sheet>
+    <Card className="p-4">
+      <h2 className="text-base font-bold">Phiên gần đây</h2>
+      <p className="mt-0.5 text-[13px] text-muted">
+        Tuần này: {week.count} phiên · {formatDuration(week.min)}
+        {week.rated > 0 && ` · ${week.good}/${week.rated} phiên bạn thấy hiệu quả`}
+      </p>
+      <ul className="mt-3 flex flex-col gap-1.5">
+        {recent.map((f) => {
+          const d = toISO(new Date(f.started_at));
+          return (
+            <li key={f.id} className="flex items-center gap-3 rounded-2xl bg-surface2 px-3 py-2">
+              <span className="w-7 shrink-0 text-center text-xl" aria-label={f.rating ? `Tự đánh giá ${f.rating}/3` : 'Chưa đánh giá'}>
+                {f.rating ? RATING_EMOJI[f.rating] : '·'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-semibold">{label(f)}</span>
+                <span className="block text-xs text-muted">
+                  {d === today ? 'Hôm nay' : formatDM(d)} · {formatDuration(f.actual_sec / 60)}
+                  {f.reflection ? ` · “${f.reflection}”` : ''}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 
 export default function Focus() {
   const [params, setParams] = useSearchParams();
+  const phase = useFocus((s) => s.phase);
   const d = useData();
-  const f = useFocus();
-  const { remaining, progress } = useFocusClock();
-  const [picker, setPicker] = useState(false);
-  const [custom, setCustom] = useState(() => (PRESETS.includes(f.planMin as 25) ? '' : String(f.planMin)));
-  const today = todayISO();
+  const [sound, setSound] = useState(false);
 
-  // Đến từ nút "Bắt đầu focus" ở Hôm nay: chọn sẵn việc đó (nếu chưa có phiên nào đang chạy)
+  // Đến từ nút "Bắt đầu focus" ở Hôm nay: gắn sẵn việc đó (nếu chưa có phiên nào đang chạy)
   useEffect(() => {
     const id = params.get('viec');
     if (!id) return;
     const st = useFocus.getState();
-    if (st.phase === 'idle' || st.phase === 'done') {
-      st.setTask(id);
-      if (st.phase === 'done') st.reset();
-    }
+    const task = d.tasks.find((t) => t.id === id);
+    if (st.phase === 'idle' && task) st.setTask(id, task.title);
     setParams({}, { replace: true });
-  }, [params, setParams]);
-
-  const task = f.taskId ? d.tasks.find((t) => t.id === f.taskId) ?? null : null;
-  const goal = task?.goal_id ? d.goals.find((g) => g.id === task.goal_id) ?? null : null;
-  const species = goal?.plant ?? 'tan-tron';
-  const stage = stageFor(progress, f.phase);
-  const running = !!f.runStart;
-  const isCustom = !PRESETS.includes(f.planMin as 25);
-
-  const resultTask = f.result?.taskId ? d.tasks.find((t) => t.id === f.result!.taskId) : undefined;
-  const resultTaskDone = resultTask
-    ? resultTask.kind === 'once'
-      ? !!resultTask.done_at
-      : d.task_completions.some((c) => c.task_id === resultTask.id && c.date === today)
-    : true;
-
-  const markDone = () => {
-    if (!resultTask) return;
-    const before = plantSnapshot(resultTask.goal_id);
-    const pts = useStore.getState().toggleTask(resultTask, today);
-    if (pts > 0) {
-      useStore.getState().toast(`Đã xong việc · +${pts} 💧 cho cây${goal ? ` "${goal.title}"` : ''}`, 'success');
-      announceGrowth(before);
-    }
-  };
-
-  let status: string;
-  if (f.phase === 'focus') status = running ? 'Đang tập trung' : 'Đang tạm dừng';
-  else if (f.phase === 'break') status = running ? 'Giờ nghỉ' : 'Nghỉ · tạm dừng';
-  else if (f.phase === 'done') status = f.result?.completed ? 'Hoàn thành phiên focus 🌸' : 'Đã dừng phiên focus';
-  else status = 'Sẵn sàng';
-
-  const shownTime = f.phase === 'done' ? fmtClock((f.result?.sec ?? 0) * 1000) : fmtClock(remaining);
+  }, [params, setParams, d.tasks]);
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="Focus" subtitle="Tập trung sâu vào một việc, như chăm một mầm cây." />
+      <PageHeader title="Focus" subtitle="Một nghi thức nhỏ để bắt đầu tập trung." />
       <div className="flex flex-col gap-4 px-4 lg:px-8">
-        <Card className="flex flex-col items-center px-5 pt-6 pb-5 text-center">
-          <TimerRing progress={f.phase === 'done' ? 1 : progress} tone={f.phase === 'break' ? 'accent' : 'primary'}>
-            <div key={stage} className={cx('mb-1', f.phase !== 'idle' && 'k-pop')}>
-              <Plant species={species} stage={stage} size={176} sway={running && f.phase === 'focus'} />
-            </div>
-          </TimerRing>
-
-          <p className={cx('mt-3 text-sm font-semibold', f.phase === 'break' ? 'text-accent' : 'text-primary')}>{status}</p>
-          <p className="text-[56px] leading-none font-bold tracking-tight tabular-nums" aria-live="off">
-            {shownTime}
-          </p>
-          {f.phase === 'done' && <p className="mt-1 text-sm text-muted">thời gian đã tập trung</p>}
-
-          {/* Việc đang focus */}
-          {f.phase === 'idle' ? (
-            <button
-              type="button"
-              onClick={() => setPicker(true)}
-              className="mt-4 flex min-h-14 w-full max-w-sm items-center gap-3 rounded-2xl bg-surface2 px-4 py-2 text-left transition hover:brightness-95"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-muted">Focus vào</p>
-                <p className="truncate text-[15px] font-bold">{task?.title ?? 'Chọn một việc (không bắt buộc)'}</p>
-              </div>
-              {task && <LeverageBadge leverage={task.leverage} compact />}
-              <ChevronDown size={18} className="shrink-0 text-muted" />
-            </button>
-          ) : (
-            (task || f.phase === 'focus') && (
-              <div className="mt-4 w-full max-w-sm rounded-2xl bg-surface2 px-4 py-2.5">
-                <p className="truncate text-[15px] font-bold">{task?.title ?? 'Focus tự do'}</p>
-                {task && (
-                  <p className="mt-1 flex items-center justify-center gap-2 text-xs text-muted">
-                    <LeverageBadge leverage={task.leverage} compact /> {goal?.title}
-                  </p>
-                )}
-              </div>
-            )
-          )}
-
-          {/* Chọn thời lượng */}
-          {f.phase === 'idle' && (
-            <div className="mt-4 w-full max-w-sm">
-              <div className="flex flex-wrap justify-center gap-2">
-                {PRESETS.map((m) => (
-                  <Chip
-                    key={m}
-                    selected={f.planMin === m}
-                    onClick={() => {
-                      f.setPlan(m);
-                      setCustom('');
-                    }}
-                  >
-                    {m} phút
-                  </Chip>
-                ))}
-                <Chip
-                  selected={isCustom}
-                  onClick={() => {
-                    if (isCustom) return;
-                    f.setPlan(40);
-                    setCustom('40');
-                  }}
-                >
-                  Tự đặt
-                </Chip>
-              </div>
-              {isCustom && (
-                <label className="mt-3 flex items-center justify-center gap-2 text-sm">
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={5}
-                    max={180}
-                    value={custom}
-                    onChange={(e) => {
-                      setCustom(e.target.value);
-                      const n = Number(e.target.value);
-                      if (n >= 5 && n <= 180) f.setPlan(n);
-                    }}
-                    className="k-input w-24 text-center"
-                    aria-label="Số phút tự đặt"
-                  />
-                  phút (5–180)
-                </label>
-              )}
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 text-sm text-muted">
-                <Coffee size={15} /> Nghỉ sau đó:
-                {BREAKS.map((b) => (
-                  <button
-                    key={b}
-                    type="button"
-                    onClick={() => f.setBreak(b)}
-                    aria-pressed={f.breakMin === b}
-                    className={cx('min-h-9 rounded-full px-2.5 font-semibold transition', f.breakMin === b ? 'bg-soft text-ink' : 'hover:bg-surface2')}
-                  >
-                    {b}p
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Kết quả phiên vừa xong */}
-          {f.phase === 'done' && f.result && (
-            <div className="mt-3 max-w-sm text-sm leading-relaxed text-muted">
-              {f.result.recorded ? (
-                <p>
-                  Đã ghi {formatDuration(f.result.sec / 60)} focus
-                  {f.result.completed ? '' : ` (dừng sớm, đặt ${f.result.planned} phút)`}.
-                  {f.result.awayCount > 0 && ` Bạn rời app ${f.result.awayCount} lần.`}
-                </p>
-              ) : (
-                <p>Phiên dưới 1 phút nên không được ghi lại.</p>
-              )}
-            </div>
-          )}
-
-          {/* Nút điều khiển */}
-          <div className="mt-5 flex w-full max-w-sm flex-col gap-2">
-            {f.phase === 'idle' && (
-              <Button size="lg" onClick={f.start}>
-                <Play size={20} fill="currentColor" /> Bắt đầu {f.planMin} phút
-              </Button>
-            )}
-            {(f.phase === 'focus' || f.phase === 'break') && (
-              <div className="flex gap-2">
-                <Button size="lg" variant={running ? 'soft' : 'primary'} className="flex-1" onClick={running ? f.pause : f.resume}>
-                  {running ? <Pause size={20} /> : <Play size={20} fill="currentColor" />}
-                  {running ? 'Tạm dừng' : 'Tiếp tục'}
-                </Button>
-                {f.phase === 'focus' ? (
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    onClick={() => {
-                      if (window.confirm('Dừng phiên focus này? Thời gian đã tập trung (từ 1 phút) vẫn được ghi lại.')) f.stop();
-                    }}
-                  >
-                    <Square size={18} /> Dừng
-                  </Button>
-                ) : (
-                  <Button size="lg" variant="outline" onClick={f.skipBreak}>
-                    Bỏ qua nghỉ
-                  </Button>
-                )}
-              </div>
-            )}
-            {f.phase === 'done' && (
-              <>
-                {resultTask && !resultTaskDone && (
-                  <Button size="lg" onClick={markDone}>
-                    <Check size={20} /> Đánh dấu việc đã xong · +{taskPoints(resultTask)} 💧
-                  </Button>
-                )}
-                <div className="flex gap-2">
-                  <Button size="lg" variant={resultTask && !resultTaskDone ? 'soft' : 'primary'} className="flex-1" onClick={f.startBreak}>
-                    <Coffee size={18} /> Nghỉ {f.breakMin} phút
-                  </Button>
-                  <Button size="lg" variant="outline" className="flex-1" onClick={f.reset}>
-                    Phiên mới
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="mt-5 flex w-full max-w-sm items-center gap-3 border-t border-line pt-4 text-left">
-            <Bell size={18} className="shrink-0 text-muted" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">Nhắc khi rời app</p>
-              <p className="text-xs leading-snug text-muted">Gửi thông báo nếu bạn chuyển sang app khác giữa phiên focus.</p>
-            </div>
-            <Switch checked={f.remindLeave} onChange={f.setRemindLeave} label="Nhắc khi rời app" />
-          </div>
+        <Card className="flex flex-col items-center px-5 pt-6 pb-6 text-center">
+          {phase === 'idle' && <Setup />}
+          {phase === 'running' && <Running />}
+          {phase === 'reflect' && <Reflect />}
         </Card>
 
-        <SoundMixer />
-        <FocusStats />
-      </div>
+        {phase !== 'reflect' && (
+          <div>
+            <button type="button" onClick={() => setSound((v) => !v)} aria-expanded={sound} className="flex min-h-11 w-full items-center justify-between rounded-2xl px-2 text-sm font-semibold text-muted">
+              <span>Âm thanh nền (không bắt buộc)</span>
+              <ChevronDown size={18} className={cx('transition-transform', sound && 'rotate-180')} />
+            </button>
+            {sound && (
+              <div className="k-fade-in mt-1">
+                <SoundMixer />
+              </div>
+            )}
+          </div>
+        )}
 
-      <TaskPicker open={picker} onClose={() => setPicker(false)} value={f.taskId} onPick={f.setTask} />
+        <Recent />
+
+        <p className="px-2 pb-2 text-center text-[13px] leading-relaxed text-muted">
+          Focus không tính điểm và không tưới cây. Cây chỉ lớn khi bạn tick việc đã thật sự xong ở màn Hôm nay hoặc Mục tiêu.
+        </p>
+      </div>
     </div>
   );
 }

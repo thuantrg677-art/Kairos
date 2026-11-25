@@ -1,217 +1,140 @@
-// Đồng hồ Focus dùng chung cho cả app: vẫn chạy khi chuyển màn hình, tải lại trang hay đóng app rồi mở lại
-// (vì tính theo mốc thời gian, lưu trong localStorage). Hết giờ focus thì ghi một dòng vào bảng focus_sessions.
+// Focus (bản 2) là một "nghi thức" để bắt đầu tập trung, không tính điểm, không tưới cây:
+//   1. Trước phiên: "Phiên này bạn làm gì?" (+ tùy chọn: AI gợi ý các bước)
+//   2. Bấm Bắt đầu → đồng hồ đếm lên → bấm Dừng
+//   3. Sau phiên: "Bạn học có hiệu quả không?" → lưu một dòng vào focus_sessions
+// Trạng thái lưu trong localStorage nên vẫn chạy tiếp khi chuyển màn, tải lại trang hay đóng app rồi mở lại.
 // Phiên được ghi qua hàng chờ: lúc offline hoặc lúc app chưa tải xong dữ liệu thì chờ rồi ghi sau.
 
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { useStore } from './store';
-import { chime, hasActiveSound, unlockAudio, useSound } from './sound';
-import type { FocusSession } from './types';
+import { hasActiveSound, unlockAudio, useSound } from './sound';
+import type { FocusSession, FocusStep } from './types';
 
-export type FocusPhase = 'idle' | 'focus' | 'break' | 'done';
+export type FocusPhase = 'idle' | 'running' | 'reflect';
 
-export const PRESETS = [25, 50, 90] as const;
-export const BREAKS = [5, 10, 15, 20] as const;
 /** Phiên ngắn hơn 1 phút không được ghi lại */
-const MIN_RECORD_SEC = 60;
-const FOCUS_KEY = 'kairos-focus-v1';
-
-/** Thời gian nghỉ gợi ý theo độ dài phiên */
-export function defaultBreak(min: number): number {
-  if (min <= 30) return 5;
-  if (min <= 60) return 10;
-  return 15;
-}
+export const MIN_RECORD_SEC = 60;
+const FOCUS_KEY = 'kairos-focus-v2';
+const OLD_KEY = 'kairos-focus-v1';
 
 type PendingSession = Omit<FocusSession, 'id' | 'created_at' | 'user_id'> & { user_id: string | null };
 
-export interface FocusResult {
-  sec: number;
-  completed: boolean;
-  taskId: string | null;
-  planned: number;
-  awayCount: number;
-  recorded: boolean;
-}
-
 interface Persisted {
   phase: FocusPhase;
-  planMin: number;
-  breakMin: number;
+  /** Phiên này định làm gì */
+  intention: string;
   taskId: string | null;
-  /** Lúc bắt đầu phiên focus (ISO) */
+  steps: FocusStep[];
+  /** Gợi ý ngắn của AI đi kèm các bước */
+  tip: string;
   startedAt: string | null;
-  durationMs: number;
-  /** Thời gian đã chạy trước lần tiếp tục gần nhất */
-  accMs: number;
-  /** Mốc bắt đầu chạy lại; null = đang tạm dừng */
-  runStart: number | null;
-  awayCount: number;
-  leftAt: number | null;
-  result: FocusResult | null;
-  remindLeave: boolean;
+  endedAt: string | null;
   pending: PendingSession[];
 }
 
 interface FocusState extends Persisted {
-  setPlan: (min: number) => void;
-  setBreak: (min: number) => void;
-  setTask: (id: string | null) => void;
-  setRemindLeave: (on: boolean) => void;
+  setIntention: (text: string) => void;
+  /** Gắn phiên với một việc (điền sẵn tên việc vào ô "Phiên này bạn làm gì?") */
+  setTask: (id: string | null, title?: string) => void;
+  setSteps: (steps: FocusStep[], tip?: string) => void;
+  toggleStep: (i: number) => void;
   start: () => void;
-  pause: () => void;
-  resume: () => void;
-  /** Dừng sớm: thời gian đã tập trung (từ 1 phút) vẫn được ghi */
   stop: () => void;
-  startBreak: () => void;
-  skipBreak: () => void;
+  /** Lưu phiên kèm tự đánh giá (rating null = bỏ qua câu hỏi) */
+  finish: (rating: number | null, reflection: string) => void;
   reset: () => void;
 }
 
 const DEFAULTS: Persisted = {
   phase: 'idle',
-  planMin: 25,
-  breakMin: 5,
+  intention: '',
   taskId: null,
+  steps: [],
+  tip: '',
   startedAt: null,
-  durationMs: 0,
-  accMs: 0,
-  runStart: null,
-  awayCount: 0,
-  leftAt: null,
-  result: null,
-  remindLeave: true,
+  endedAt: null,
   pending: [],
 };
 
 function load(): Persisted {
   try {
     const raw = JSON.parse(localStorage.getItem(FOCUS_KEY) ?? 'null') as Partial<Persisted> | null;
-    return { ...DEFAULTS, ...(raw ?? {}) };
+    const state = { ...DEFAULTS, ...(raw ?? {}) };
+    // Phiên của bản cũ còn chờ ghi thì chuyển sang (không bỏ mất giờ đã tập trung)
+    const old = JSON.parse(localStorage.getItem(OLD_KEY) ?? 'null') as { pending?: PendingSession[] } | null;
+    if (old?.pending?.length) state.pending = [...state.pending, ...old.pending];
+    if (old) localStorage.removeItem(OLD_KEY);
+    return state;
   } catch {
     return DEFAULTS;
   }
 }
 
-export const elapsedMs = (s: Pick<Persisted, 'accMs' | 'runStart'>, now = Date.now()) =>
-  s.accMs + (s.runStart ? now - s.runStart : 0);
-export const remainingMs = (s: Pick<Persisted, 'accMs' | 'runStart' | 'durationMs'>, now = Date.now()) =>
-  Math.max(0, s.durationMs - elapsedMs(s, now));
+export const elapsedMs = (s: Pick<Persisted, 'startedAt' | 'endedAt'>, now = Date.now()) =>
+  s.startedAt ? Math.max(0, (s.endedAt ? Date.parse(s.endedAt) : now) - Date.parse(s.startedAt)) : 0;
 
 export const useFocus = create<FocusState>((set, get) => ({
   ...(typeof window === 'undefined' ? DEFAULTS : load()),
 
-  setPlan: (min) => {
-    const m = Math.round(Math.min(180, Math.max(5, min)));
-    set({ planMin: m, breakMin: defaultBreak(m) });
+  setIntention: (intention) => set({ intention: intention.slice(0, 300) }),
+  setTask: (taskId, title) => {
+    const s = get();
+    // Đổi việc thì bỏ các bước cũ (của việc khác)
+    set({ taskId, intention: title ?? s.intention, ...(taskId !== s.taskId ? { steps: [], tip: '' } : {}) });
   },
-  setBreak: (min) => set({ breakMin: min }),
-  setTask: (taskId) => set({ taskId }),
-  setRemindLeave: (on) => {
-    set({ remindLeave: on });
-    if (on && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission();
-  },
+  setSteps: (steps, tip = '') => set({ steps: steps.slice(0, 8), tip }),
+  toggleStep: (i) => set({ steps: get().steps.map((x, k) => (k === i ? { ...x, done: !x.done } : x)) }),
 
   start: () => {
     unlockAudio();
-    const now = Date.now();
-    set({
-      phase: 'focus',
-      startedAt: new Date(now).toISOString(),
-      durationMs: get().planMin * 60_000,
-      accMs: 0,
-      runStart: now,
-      awayCount: 0,
-      leftAt: null,
-      result: null,
-    });
+    set({ phase: 'running', startedAt: new Date().toISOString(), endedAt: null });
     if (hasActiveSound()) useSound.getState().play();
-    if (get().remindLeave && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission();
     ensureTicker();
   },
 
-  pause: () => {
+  stop: () => {
     const s = get();
-    if (!s.runStart) return;
-    set({ accMs: elapsedMs(s), runStart: null });
-    if (s.phase === 'focus') useSound.getState().stop();
+    if (s.phase !== 'running') return;
+    useSound.getState().stop();
+    const endedAt = new Date().toISOString();
+    if (elapsedMs({ startedAt: s.startedAt, endedAt }) < MIN_RECORD_SEC * 1000) {
+      useStore.getState().toast('Phiên dưới 1 phút nên không được ghi lại. Khi sẵn sàng thì bắt đầu lại nhé.');
+      set({ phase: 'idle', startedAt: null, endedAt: null, steps: s.steps.map((x) => ({ ...x, done: false })) });
+      return;
+    }
+    set({ phase: 'reflect', endedAt });
   },
 
-  resume: () => {
-    unlockAudio();
-    if (get().runStart) return;
-    set({ runStart: Date.now() });
-    if (get().phase === 'focus' && hasActiveSound()) useSound.getState().play();
-    ensureTicker();
-  },
-
-  stop: () => finishFocus(false),
-
-  startBreak: () => {
-    unlockAudio();
-    set({ phase: 'break', durationMs: get().breakMin * 60_000, accMs: 0, runStart: Date.now() });
-    ensureTicker();
-  },
-
-  skipBreak: () => set({ phase: 'idle', runStart: null, accMs: 0 }),
-
-  reset: () => {
-    if (get().phase === 'focus') useSound.getState().stop();
-    set({ phase: 'idle', runStart: null, accMs: 0, result: null });
-  },
-}));
-
-// ------------------------------------------------------------
-// Kết thúc phiên và ghi dữ liệu
-// ------------------------------------------------------------
-
-function finishFocus(completed: boolean) {
-  const s = useFocus.getState();
-  if (s.phase !== 'focus' || !s.startedAt) return;
-  const now = Date.now();
-  const el = elapsedMs(s, now);
-  const sec = completed ? Math.round(s.durationMs / 1000) : Math.floor(el / 1000);
-  // Nếu app bị đóng lúc hết giờ thì mốc kết thúc là lúc đồng hồ thực sự về 0, không phải lúc mở lại
-  const endedAt = new Date(completed ? now - Math.max(0, el - s.durationMs) : now).toISOString();
-  const store = useStore.getState();
-  const task = s.taskId ? store.tasks.find((t) => t.id === s.taskId) : undefined;
-  const recorded = sec >= MIN_RECORD_SEC;
-  const pending = [...s.pending];
-  if (recorded) {
-    pending.push({
+  finish: (rating, reflection) => {
+    const s = get();
+    if (s.phase !== 'reflect' || !s.startedAt || !s.endedAt) return;
+    const store = useStore.getState();
+    const task = s.taskId ? store.tasks.find((t) => t.id === s.taskId) : undefined;
+    const sec = Math.round(elapsedMs(s) / 1000);
+    const row: PendingSession = {
       user_id: store.userId,
       task_id: s.taskId,
       goal_id: task?.goal_id ?? null,
       started_at: s.startedAt,
-      ended_at: endedAt,
-      planned_min: Math.round(s.durationMs / 60_000),
+      ended_at: s.endedAt,
+      planned_min: 0,
       actual_sec: sec,
-      completed,
-    });
-  }
-  useFocus.setState({
-    phase: 'done',
-    runStart: null,
-    accMs: 0,
-    leftAt: null,
-    pending,
-    result: { sec, completed, taskId: s.taskId, planned: Math.round(s.durationMs / 60_000), awayCount: s.awayCount, recorded },
-  });
-  useSound.getState().stop();
-  if (completed) {
-    chime();
-    notifyIfHidden('Hết giờ focus 🌸', 'Mầm cây đã nở hoa. Nghỉ một chút rồi làm tiếp nhé.');
-  } else if (!recorded) {
-    store.toast('Phiên dưới 1 phút nên không được ghi lại.');
-  }
-  flushPending();
-}
+      completed: true,
+      intention: s.intention.trim() || task?.title || '',
+      steps: s.steps,
+      rating,
+      reflection: reflection.trim().slice(0, 1000),
+    };
+    set({ ...DEFAULTS, pending: [...s.pending, row] });
+    flushPending();
+  },
 
-function finishBreak() {
-  useFocus.setState({ phase: 'idle', runStart: null, accMs: 0 });
-  chime(true);
-  notifyIfHidden('Hết giờ nghỉ', 'Sẵn sàng cho phiên focus tiếp theo chưa?');
-}
+  reset: () => {
+    if (get().phase === 'running') useSound.getState().stop();
+    set({ ...DEFAULTS, pending: get().pending });
+  },
+}));
 
 let flushing = false;
 /** Ghi các phiên đang chờ khi app đã sẵn sàng và có mạng */
@@ -242,108 +165,38 @@ export function flushPending() {
 }
 
 // ------------------------------------------------------------
-// Bộ đếm giờ chạy nền và nhắc khi rời app
+// Đồng hồ trên tiêu đề tab
 // ------------------------------------------------------------
 
 let ticker: ReturnType<typeof setInterval> | undefined;
 const baseTitle = typeof document !== 'undefined' ? document.title : 'Kairos';
 
+/** 754000 → "12:34", 4000000 → "1:06:40" */
 export const fmtClock = (ms: number) => {
-  const total = Math.ceil(ms / 1000);
-  const m = Math.floor(total / 60);
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
   const sec = total % 60;
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(sec).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 };
 
 function tick() {
   const s = useFocus.getState();
-  if (s.phase !== 'focus' && s.phase !== 'break') {
+  if (s.phase !== 'running') {
     clearInterval(ticker);
     ticker = undefined;
     document.title = baseTitle;
     return;
   }
-  if (!s.runStart) {
-    document.title = `⏸ ${fmtClock(remainingMs(s))} · Kairos`;
-    return;
-  }
-  const left = remainingMs(s);
-  if (left <= 0) {
-    if (s.phase === 'focus') finishFocus(true);
-    else finishBreak();
-    document.title = baseTitle;
-    return;
-  }
-  document.title = `${s.phase === 'focus' ? '🌱' : '☕'} ${fmtClock(left)} · Kairos`;
+  document.title = `🎯 ${fmtClock(elapsedMs(s))} · Kairos`;
 }
 
 function ensureTicker() {
   if (ticker) return;
-  ticker = setInterval(tick, 500);
+  ticker = setInterval(tick, 1000);
   tick();
-}
-
-async function notifyIfHidden(title: string, body: string) {
-  if (document.visibilityState === 'visible') return;
-  await showNotification(title, body);
-}
-
-async function showNotification(title: string, body: string) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const options: NotificationOptions = { body, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: 'kairos-focus' };
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    if (reg) await reg.showNotification(title, options);
-    else new Notification(title, options);
-  } catch {
-    /* một số trình duyệt không cho tạo thông báo theo cách này */
-  }
-}
-
-async function closeNotifications() {
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    const list = (await reg?.getNotifications({ tag: 'kairos-focus' })) ?? [];
-    list.forEach((n) => n.close());
-  } catch {
-    /* bỏ qua */
-  }
-}
-
-let leaveTimer: ReturnType<typeof setTimeout> | undefined;
-
-function onVisibility() {
-  const s = useFocus.getState();
-  const running = s.phase === 'focus' && !!s.runStart;
-  if (document.visibilityState === 'hidden') {
-    if (!running) return;
-    useFocus.setState({ leftAt: Date.now() });
-    if (s.remindLeave) {
-      clearTimeout(leaveTimer);
-      // Chờ vài giây để không làm phiền khi chỉ lướt qua app khác
-      leaveTimer = setTimeout(() => {
-        const now = useFocus.getState();
-        if (document.visibilityState === 'hidden' && now.phase === 'focus' && now.runStart) {
-          void showNotification('Mầm cây đang chờ bạn 🌱', `Còn ${fmtClock(remainingMs(now))} của phiên focus. Quay lại Kairos để cây tiếp tục lớn nhé.`);
-        }
-      }, 5000);
-    }
-    return;
-  }
-  // Quay lại app
-  clearTimeout(leaveTimer);
-  void closeNotifications();
-  tick();
-  const after = useFocus.getState();
-  if (after.leftAt) {
-    const away = Date.now() - after.leftAt;
-    useFocus.setState({ leftAt: null });
-    if (after.phase === 'focus' && away > 5000) {
-      useFocus.setState({ awayCount: after.awayCount + 1 });
-      const mins = Math.round(away / 60_000);
-      useStore.getState().toast(`Bạn vừa rời Kairos ${mins >= 1 ? `${mins} phút` : 'một lúc'}. Đồng hồ vẫn chạy, quay lại việc thôi! 🌱`);
-    }
-  }
 }
 
 // ------------------------------------------------------------
@@ -351,21 +204,15 @@ function onVisibility() {
 // ------------------------------------------------------------
 
 if (typeof window !== 'undefined') {
-  // Lưu trạng thái (trừ các giá trị không đổi) mỗi khi có thay đổi
   useFocus.subscribe((s) => {
     const data: Persisted = {
       phase: s.phase,
-      planMin: s.planMin,
-      breakMin: s.breakMin,
+      intention: s.intention,
       taskId: s.taskId,
+      steps: s.steps,
+      tip: s.tip,
       startedAt: s.startedAt,
-      durationMs: s.durationMs,
-      accMs: s.accMs,
-      runStart: s.runStart,
-      awayCount: s.awayCount,
-      leftAt: s.leftAt,
-      result: s.result,
-      remindLeave: s.remindLeave,
+      endedAt: s.endedAt,
       pending: s.pending,
     };
     try {
@@ -374,36 +221,27 @@ if (typeof window !== 'undefined') {
       /* bỏ qua */
     }
   });
-  document.addEventListener('visibilitychange', onVisibility);
   // Có dữ liệu/có mạng trở lại thì ghi các phiên đang chờ
   useStore.subscribe((st, prev) => {
     if (st.status !== prev.status || st.online !== prev.online || st.userId !== prev.userId) flushPending();
   });
-  const s = useFocus.getState();
-  if (s.phase === 'focus' || s.phase === 'break') {
-    // Mở lại app giữa chừng: nếu đã qua lúc rời app thì xem như vừa quay lại
-    if (s.leftAt) useFocus.setState({ leftAt: null });
-    ensureTicker();
-  }
+  if (useFocus.getState().phase === 'running') ensureTicker();
 }
 
 // ------------------------------------------------------------
 // Hook cho giao diện
 // ------------------------------------------------------------
 
-/** Thời gian còn lại và tiến độ (0–1) của phiên đang chạy, cập nhật 4 lần mỗi giây */
-export function useFocusClock() {
+/** Thời gian đã tập trung của phiên đang chạy (cập nhật mỗi giây) */
+export function useFocusElapsed(): number {
   const s = useFocus();
-  const active = (s.phase === 'focus' || s.phase === 'break') && !!s.runStart;
+  const running = s.phase === 'running';
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!active) return;
+    if (!running) return;
     setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 250);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [active]);
-  const t = active ? now : Date.now();
-  const remaining = s.phase === 'focus' || s.phase === 'break' ? remainingMs(s, t) : s.planMin * 60_000;
-  const progress = s.durationMs > 0 && (s.phase === 'focus' || s.phase === 'break') ? Math.min(1, elapsedMs(s, t) / s.durationMs) : 0;
-  return { remaining, progress };
+  }, [running]);
+  return elapsedMs(s, running ? now : Date.now());
 }

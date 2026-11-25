@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, ChartNoAxesColumn, Inbox, PenLine, RefreshCw, Settings, Sprout, Sun, Target, Timer, WifiOff } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChartNoAxesColumn, Inbox, MessageCircle, PenLine, RefreshCw, Settings, Sprout, Sun, Target, Timer, WifiOff } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { usePwa } from '@/lib/pwa';
 import { usePush } from '@/lib/push';
@@ -15,6 +15,7 @@ import { FocusPill } from './FocusPill';
 const TABS = [
   { to: '/', label: 'Hôm nay', icon: Sun },
   { to: '/muc-tieu', label: 'Mục tiêu', icon: Target },
+  { to: '/tro-ly', label: 'Trợ lý', icon: MessageCircle },
   { to: '/focus', label: 'Focus', icon: Timer },
   { to: '/vuon', label: 'Vườn', icon: Sprout },
   { to: '/tong-quan', label: 'Tổng quan', icon: ChartNoAxesColumn },
@@ -155,10 +156,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (usePush.getState().state === 'checking') void usePush.getState().check();
   }, [mode, online, stale]);
 
-  // Chuyển màn thì cuộn về đầu trang
+  // Chuyển màn thì cuộn về đầu trang (trang Trợ lý tự cuộn xuống tin nhắn mới nhất)
   useEffect(() => {
-    window.scrollTo(0, 0);
+    if (location.pathname !== '/tro-ly') window.scrollTo(0, 0);
   }, [location.pathname]);
+  const chatting = location.pathname === '/tro-ly';
 
   return (
     <div className="min-h-dvh lg:pl-64">
@@ -184,10 +186,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="safe-top">
         <Banners />
-        <main className="pb-28 lg:pb-12">{children}</main>
+        <main className={chatting ? 'pb-[calc(env(safe-area-inset-bottom,0px)+60px)] lg:pb-0' : 'pb-28 lg:pb-12'}>{children}</main>
       </div>
 
-      {/* Nút ghi nhanh nổi (điện thoại) */}
+      {/* Nút ghi nhanh nổi (điện thoại); ẩn ở trang Trợ lý để không che ô soạn tin */}
+      {!chatting && (
       <button
         aria-label="Ghi nhanh vào Nháp"
         onClick={() => setCapture(true)}
@@ -196,6 +199,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <PenLine size={24} />
       </button>
+      )}
 
       {/* Thanh tab dưới cùng (điện thoại) */}
       <nav
@@ -210,14 +214,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               end={t.to === '/'}
               className={({ isActive }) =>
                 cx(
-                  'flex min-h-[60px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition',
+                  'flex min-h-[60px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-[10.5px] font-medium whitespace-nowrap transition',
                   isActive ? 'text-primary' : 'text-muted',
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  <span className={cx('flex h-7 w-12 items-center justify-center rounded-full transition', isActive && 'bg-soft')}>
+                  <span className={cx('flex h-7 w-11 items-center justify-center rounded-full transition', isActive && 'bg-soft')}>
                     <t.icon size={20} strokeWidth={isActive ? 2.4 : 2} />
                   </span>
                   {t.label}
@@ -228,7 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </nav>
 
-      <FocusPill />
+      {!chatting && <FocusPill />}
       <QuickCapture open={capture} onClose={() => setCapture(false)} />
     </div>
   );

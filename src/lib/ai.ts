@@ -7,7 +7,7 @@ import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@s
 import { supabase } from './supabase';
 import { useStore } from './store';
 import { todayISO } from './dates';
-import type { AIWeekReview, Task } from './types';
+import type { AIWeekReview, ChatAction, Task } from './types';
 
 // ---------- Kiểu dữ liệu trả về của từng tác vụ ----------
 export interface AITask {
@@ -28,6 +28,20 @@ export interface AIResults {
   inbox: { items: ({ item_id: string; tip: string } & ({ action: 'task'; task: AITask & { goal_id: string | null } } | { action: 'note' }))[] };
   schedule: { placed: { task_id: string; start_min: number; duration_min: number }[]; left: string[]; note: string };
   weekly_review: Omit<AIWeekReview, 'at'>;
+  /** Bản 2: chia một đầu việc thành các việc mỗi ngày */
+  breakdown: { steps: { title: string; date: string; estimate_min: number }[]; note: string };
+  /** Bản 2: các bước cho một phiên Focus */
+  focus_steps: { steps: { title: string; minutes: number }[]; tip: string };
+  /** Bản 2: trò chuyện với Trợ lý AI */
+  chat: {
+    reply: string;
+    remember: string[];
+    actions: ChatAction[];
+    actions_title: string;
+    quick_replies: string[];
+    image_note: string;
+    ready: boolean;
+  };
 }
 export type AIAction = keyof AIResults;
 
@@ -43,6 +57,8 @@ export class AIError extends Error {
 
 /** Số lượt AI còn lại hôm nay (null = chưa biết) */
 export const useAIQuota = create<{ remaining: number | null; limit: number }>(() => ({ remaining: null, limit: 15 }));
+/** Số tin nhắn trò chuyện với Trợ lý AI còn lại hôm nay (lượt riêng) */
+export const useChatQuota = create<{ remaining: number | null; limit: number }>(() => ({ remaining: null, limit: 40 }));
 
 interface Reply {
   ok: boolean;
@@ -51,6 +67,7 @@ interface Reply {
   message?: string;
   remaining?: number;
   limit?: number;
+  quota?: 'ai' | 'chat';
 }
 
 export async function askAI<A extends AIAction>(action: A, payload: Record<string, unknown> = {}): Promise<AIResults[A]> {
@@ -74,7 +91,10 @@ export async function askAI<A extends AIAction>(action: A, payload: Record<strin
     if (!reply) throw new AIError('failed', 'Không gọi được AI. Bạn thử lại sau nhé.');
   } else reply = data as Reply;
 
-  if (reply && typeof reply.remaining === 'number') useAIQuota.setState({ remaining: reply.remaining, limit: reply.limit ?? 15 });
+  if (reply && typeof reply.remaining === 'number') {
+    if (reply.quota === 'chat' || action === 'chat') useChatQuota.setState({ remaining: reply.remaining, limit: reply.limit ?? 40 });
+    else useAIQuota.setState({ remaining: reply.remaining, limit: reply.limit ?? 15 });
+  }
   if (!reply?.ok) throw new AIError(reply?.code ?? 'failed', reply?.message ?? 'AI chưa trả lời được. Bạn thử lại sau nhé.');
   return reply.data as AIResults[A];
 }
@@ -91,6 +111,7 @@ export async function checkAI(): Promise<{ state: 'ready' | 'no_key' | 'missing'
   }
   if (!data?.ok) return { state: 'error' };
   useAIQuota.setState({ remaining: data.remaining, limit: data.limit ?? 15 });
+  if (typeof data.data?.chat_remaining === 'number') useChatQuota.setState({ remaining: data.data.chat_remaining, limit: data.data.chat_limit ?? 40 });
   return { state: data.data?.configured ? 'ready' : 'no_key', model: data.data?.model };
 }
 

@@ -1,14 +1,13 @@
-// Khởi đầu (onboarding), đúng thứ tự:
+// Thiết lập bằng tay (dự phòng cho phần làm quen bằng trò chuyện ở Welcome.tsx, khi AI chưa dùng được):
 // 1. Mục tiêu dài hạn → 2. Mục tiêu 12 tuần → 3. Lịch cố định → 4. Chọn cây + giao diện.
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, BookOpenText, Check, Pencil, Plus, Sprout, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, ArrowRight, Check, MessageCircle, Pencil, Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useData, useStore } from '@/lib/store';
 import { addDays, formatDM, formatDMY, mondayOf, todayISO } from '@/lib/dates';
 import { CYCLE_DAYS, getActiveCycle } from '@/lib/logic';
 import { isDark } from '@/lib/themes';
-import { STARTER_GOALS, STARTER_VISIONS } from '@/lib/guide';
 import type { Goal } from '@/lib/types';
 import { Button, Card, cx } from '@/components/ui';
 import { LogoMark } from '@/components/Logo';
@@ -19,7 +18,7 @@ import { DarkModePicker, PlantBadge, PlantPicker, Segmented, ThemePicker } from 
 const STEPS = ['Mục tiêu dài hạn', 'Mục tiêu 12 tuần', 'Lịch cố định', 'Cây và giao diện'];
 const PROMPTS = ['3 năm nữa bạn muốn mình trở thành ai?', 'Lĩnh vực nào quan trọng nhất với bạn lúc này?', 'Điều gì khiến bạn tự hào nhất nếu làm được?'];
 
-export default function Onboarding() {
+export default function Onboarding({ onBack }: { onBack?: () => void }) {
   const d = useData();
   const navigate = useNavigate();
   const st = useStore.getState();
@@ -46,7 +45,6 @@ export default function Onboarding() {
   const thisMonday = mondayOf(todayISO());
   const [goalOpen, setGoalOpen] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
-  const [starterGoal, setStarterGoal] = useState<{ title: string; measure: string } | null>(null);
   const ensureCycle = (start: string) => {
     const end = addDays(start, CYCLE_DAYS - 1);
     if (!cycle) st.insert('cycles', { start_date: start, end_date: end, status: 'active' });
@@ -90,9 +88,11 @@ export default function Onboarding() {
             <span className="text-lg font-bold tracking-tight">kairos</span>
           </span>
           <span className="flex items-center gap-3">
-            <button className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary" onClick={() => navigate('/huong-dan')}>
-              <BookOpenText size={17} /> Hướng dẫn
-            </button>
+            {onBack && (
+              <button className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary" onClick={onBack}>
+                <MessageCircle size={17} /> Trò chuyện với AI
+              </button>
+            )}
             <button className="min-h-11 text-sm text-muted" onClick={() => void st.signOut()}>
               Thoát
             </button>
@@ -142,24 +142,6 @@ export default function Onboarding() {
                   </Card>
                 ))}
               </div>
-            )}
-
-            {d.visions.length === 0 && (
-              <StarterBox title="Lần đầu dùng? Chọn một gợi ý để tập, sửa lại sau cũng được">
-                {STARTER_VISIONS.map((v) => (
-                  <StarterChip
-                    key={v.title}
-                    selected={title === v.title}
-                    onClick={() => {
-                      setTitle(v.title);
-                      setArea(v.area);
-                      setDescription(v.description);
-                    }}
-                  >
-                    {v.title}
-                  </StarterChip>
-                ))}
-              </StarterBox>
             )}
 
             <Card className="mt-5 p-4">
@@ -212,19 +194,9 @@ export default function Onboarding() {
             <Button variant={goals.length ? 'soft' : 'primary'} className="mt-3 w-full" onClick={() => setGoalOpen(true)}>
               <Plus size={18} /> {goals.length ? `Thêm mục tiêu thứ ${goals.length + 1}` : 'Thêm mục tiêu 12 tuần đầu tiên'}
             </Button>
-            {goals.length < 2 && (
-              <StarterBox title="Mục tiêu nhỏ, dễ đo để tập làm quen (bấm để điền sẵn)">
-                {STARTER_GOALS.filter((g) => !goals.some((x) => x.title === g.title)).map((g) => (
-                  <StarterChip key={g.title} onClick={() => setStarterGoal(g)}>
-                    {g.title}
-                  </StarterChip>
-                ))}
-              </StarterBox>
-            )}
             <p className="mt-3 text-[13px] leading-relaxed text-muted">Mỗi mục tiêu phải gắn với một mục tiêu dài hạn, đo được và có ngày hoàn thành. Khi thêm hoặc sửa mục tiêu, bấm ✨ <b>AI nhận xét mức liên kết</b> để xem mục tiêu đã rõ và nối đúng với mục tiêu dài hạn chưa.</p>
             <GoalEditor open={goalOpen} onClose={() => setGoalOpen(false)} hidePlant />
             <GoalEditor open={!!editGoal} onClose={() => setEditGoal(null)} goal={editGoal} hidePlant />
-            <GoalEditor open={!!starterGoal} onClose={() => setStarterGoal(null)} defaults={starterGoal} hidePlant />
           </>
         )}
 
@@ -240,7 +212,7 @@ export default function Onboarding() {
           <>
             <h1 className="text-2xl leading-tight font-bold">Gieo hạt cho khu vườn của bạn</h1>
             <p className="mt-1.5 text-[15px] leading-relaxed text-muted">
-              Mỗi mục tiêu là một cây. Làm xong việc là tưới cây: <b className="text-high">việc 20% tưới +3 💧</b>, việc 80% tưới +1 💧.
+              Mỗi mục tiêu là một cây. Làm xong việc nào, dù nhỏ, cũng là tưới cây: <b className="text-high">việc 20% tưới +3 💧</b>, việc 80% tưới +1 💧.
             </p>
             <div className="mt-4 flex flex-col gap-3">
               {goals.map((g) => (
@@ -276,33 +248,5 @@ export default function Onboarding() {
         </div>
       </footer>
     </div>
-  );
-}
-
-/** Khung gợi ý mẫu cho người mới */
-function StarterBox({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mt-4 rounded-2xl border border-dashed border-primary/50 bg-soft/50 p-3.5">
-      <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-        <Sprout size={16} className="shrink-0 text-primary" /> {title}
-      </p>
-      <div className="mt-2.5 flex flex-wrap gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-function StarterChip({ selected, onClick, children }: { selected?: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={cx(
-        'min-h-9 rounded-2xl px-3 py-1.5 text-left text-[13px] leading-snug font-medium transition active:scale-[.98]',
-        selected ? 'bg-primary text-onprimary' : 'border border-line bg-surface text-ink',
-      )}
-    >
-      {children}
-    </button>
   );
 }

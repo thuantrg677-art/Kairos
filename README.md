@@ -2,9 +2,11 @@
 
 **Focus on what matters.** Web app (PWA) quản lý mục tiêu, thời gian và thói quen cho sinh viên, dựa trên nguyên lý Pareto 80/20 và phương pháp The 12 Week Year.
 
-- Đi từ **mục tiêu dài hạn** (3–5 năm) → **2–3 mục tiêu cho 12 tuần** → **đầu việc hằng ngày**.
-- Mỗi việc mang nhãn **Việc 20%** (đòn bẩy cao, tưới +3 💧) hoặc **Việc 80%** (tưới +1 💧).
-- Mỗi mục tiêu 12 tuần là một cây trong **Vườn**, lớn lên theo số 💧 nhận được.
+- 4 tầng: **mục tiêu dài hạn** (3–5 năm) → **mục tiêu ngắn hạn** (2–3 mục tiêu cho 12 tuần) → **đầu việc** → **việc mỗi ngày**.
+- Mỗi đầu việc mang nhãn **Việc 20%** (đòn bẩy cao, tưới +3 💧) hoặc **Việc 80%** (+1 💧); mỗi việc mỗi ngày của nó +2 💧 / +1 💧.
+- Mỗi mục tiêu 12 tuần là một cây trong **Vườn**, lớn lên theo số 💧 nhận được. Việc nhỏ cỡ nào cũng tưới cây.
+- **Trợ lý AI** luôn biết mục tiêu, lịch và bối cảnh của bạn: cùng lập kế hoạch từ ngày đầu, phân việc 80/20, chia nhỏ từng việc.
+- **Focus** là nghi thức bắt đầu tập trung (không tính điểm): định làm gì → AI gợi ý các bước → bắt đầu/dừng → tự đánh giá.
 
 ## Bắt đầu
 
@@ -15,6 +17,8 @@
 👉 **[Hướng dẫn giai đoạn 3](docs/HUONG-DAN-GD3.md)**: chạy 1 file SQL nhỏ và cập nhật code Edge Function `ai`. Khoảng 5 phút.
 
 👉 **[Hướng dẫn giai đoạn 4](docs/HUONG-DAN-GD4.md)**: chạy 1 file SQL, tạo Edge Function `tick` để có thông báo (tóm tắt sáng, nhắc deadline, nhắc nhật ký), kèm danh sách kiểm thử trên điện thoại. Khoảng 10 phút.
+
+👉 **[Hướng dẫn cập nhật bản 2](docs/HUONG-DAN-BAN-2.md)**: chạy 1 file SQL, dán lại code Edge Function `ai` (và `tick`) để có Trợ lý AI, việc mỗi ngày, Focus nghi thức, 5 loài cây mới. Khoảng 10 phút.
 
 Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu mẫu** (không cần tài khoản).
 
@@ -27,7 +31,7 @@ Muốn xem giao diện ngay: mở app và bấm **Xem thử với dữ liệu m�
 | 2b | Focus + âm thanh + thống kê | ✅ Xong |
 | 3 | Vườn đầy đủ (héo/hồi phục, kỷ niệm), nhật ký ngày, nhìn lại tuần, AI nhận xét tuần, lịch sử dạng lịch | ✅ Xong (cần làm theo hướng dẫn GĐ3) |
 | 4 | Web Push + chuông trong app, tóm tắt sáng, nhắc deadline 7/3/1 ngày, nhắc nhật ký, Tổng quan đầy đủ | ✅ Xong (cần làm theo hướng dẫn GĐ4) |
-| Hướng dẫn | Hướng dẫn sử dụng cho người mới (mở lại trong Cài đặt), gợi ý mục tiêu mẫu, thẻ Tập làm quen 8 bước | ✅ Xong |
+| Bản 2 | Làm quen bằng trò chuyện với AI, tab Trợ lý (có gửi ảnh, AI ghi nhớ bối cảnh), Focus nghi thức, 4 tầng mục tiêu + việc mỗi ngày, tưới cây cho mọi việc nhỏ, 5 loài cây mới, trang Nguyên lý Pareto | ✅ Xong (cần làm theo hướng dẫn bản 2) |
 
 ## Công nghệ
 
@@ -46,7 +50,9 @@ src/
     types.ts            Kiểu dữ liệu (trùng tên cột trong database)
     store.ts            Kho dữ liệu: tải, lưu, đồng bộ, chế độ xem thử
     logic.ts            Việc của ngày, thứ tự ưu tiên, điểm 💧, khung trống, tự xếp việc, điểm tuần
-    garden.ts           Cây héo/hồi phục, hiệu ứng lên giai đoạn, kết thúc chu kỳ, Khu vườn kỷ niệm
+    garden.ts           Cây héo/hồi phục, hiệu ứng lên giai đoạn, lời khen khi tick, kết thúc chu kỳ, Khu vườn kỷ niệm
+    chat.ts             Trò chuyện với Trợ lý AI: gửi tin, thu nhỏ ảnh, thêm đề xuất của AI vào kế hoạch
+    focus.ts            Focus nghi thức: điều định làm, các bước, bắt đầu/dừng, tự đánh giá
     review.ts           Số liệu nhật ký ngày, nhìn lại tuần, lịch sử dạng lịch
     overview.ts         Số liệu Tổng quan: deadline sắp tới, giờ focus, chi tiết mục tiêu
     push.ts             Bật/tắt/gửi thử thông báo đẩy trên thiết bị
@@ -56,7 +62,7 @@ src/
     ai.ts               Gọi AI qua Edge Function, đếm lượt, báo lỗi dễ hiểu
     themes.ts, pwa.ts   Theme; cài app và cập nhật phiên bản
   components/           Nút, thẻ, bảng trượt, cây/hoa SVG, tranh nền, dòng thời gian, các bảng thêm/sửa
-  pages/                Login, Guide, Onboarding, Today, Goals, Inbox, Garden, Focus, Overview, WeekReview, JournalPage, History, Settings
+  pages/                Login, Welcome (làm quen bằng trò chuyện), Onboarding (tự điền), Today, Goals, Assistant (Trợ lý), Inbox, Garden, Focus, Overview, WeekReview, JournalPage, History, Settings, Pareto
 supabase/migrations/    File SQL tạo database (bảng + Row Level Security), chạy theo thứ tự 001, 002…
 supabase/functions/ai/  Edge Function AI (khóa Gemini chỉ nằm ở đây, trên server)
 supabase/functions/tick/ Edge Function thông báo: cron 15 phút, Web Push, đăng ký thiết bị

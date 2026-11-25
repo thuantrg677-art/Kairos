@@ -107,6 +107,8 @@ interface Goal { id: string; user_id: string; cycle_id: string; title: string; s
 interface Task {
   id: string; user_id: string; goal_id: string | null; title: string; kind: 'recurring' | 'once'; weekdays: number[];
   due_date: string | null; leverage: 'high' | 'normal'; important: boolean; done_at: string | null; archived_at: string | null; created_at: string;
+  /** Việc mỗi ngày thuộc đầu việc nào (bản 2, cần 005_v2.sql; chưa có thì undefined) */
+  parent_id?: string | null;
 }
 interface Completion { task_id: string; user_id: string; date: string }
 interface Block { task_id: string; user_id: string; date: string; start_min: number | null }
@@ -125,9 +127,15 @@ function liveGoal(task: Task, d: UserData): Goal | null | undefined {
 function dayItems(d: UserData, date: string): DayItem[] {
   const wd = isoWeekday(date);
   const out: DayItem[] = [];
+  const byId = new Map(d.tasks.map((t) => [t.id, t]));
   for (const task of d.tasks) {
     const goal = liveGoal(task, d);
     if (goal === undefined) continue;
+    // Việc mỗi ngày chưa làm mà đầu việc cha đã xong thì bỏ qua
+    if (task.parent_id && !task.done_at) {
+      const parent = byId.get(task.parent_id);
+      if (!parent || parent.archived_at || parent.done_at) continue;
+    }
     const block = d.blocks.find((b) => b.task_id === task.id && b.date === date) ?? null;
     if (task.kind === 'recurring') {
       if (!(task.weekdays ?? []).includes(wd) && !block) continue;
@@ -139,7 +147,7 @@ function dayItems(d: UserData, date: string): DayItem[] {
       const done = !!task.done_at;
       if (done) {
         if (!d.completions.some((c) => c.task_id === task.id && c.date === date)) continue;
-      } else if (!block && !(task.due_date && task.due_date <= addDays(date, 1))) continue;
+      } else if (!block && !(task.due_date && task.due_date <= (task.parent_id ? date : addDays(date, 1)))) continue;
       out.push({ task, goal, done, start: block?.start_min ?? null, overdue: !done && !!task.due_date && task.due_date < date });
     }
   }
@@ -508,7 +516,8 @@ export async function runTick(db: SupabaseClient, cfg: Config) {
       inChunks<Cycle>(mIds, (c) => db.from('cycles').select('id,user_id,start_date,end_date,status').in('user_id', c).eq('status', 'active')),
       inChunks<Goal>(mIds, (c) => db.from('goals').select('id,user_id,cycle_id,title,status').in('user_id', c).eq('status', 'active')),
       inChunks<Task>(mIds, (c) =>
-        db.from('tasks').select('id,user_id,goal_id,title,kind,weekdays,due_date,leverage,important,done_at,archived_at,created_at').in('user_id', c).is('archived_at', null),
+        // select('*') để chạy được cả khi chưa có cột parent_id (chưa chạy 005_v2.sql)
+        db.from('tasks').select('*').in('user_id', c).is('archived_at', null),
       ),
       inChunks<Completion>(mIds, (c) => db.from('task_completions').select('task_id,user_id,date').in('user_id', c).gte('date', dates[0]).lte('date', dates[dates.length - 1])),
       inChunks<Block>(mIds, (c) => db.from('schedule_blocks').select('task_id,user_id,date,start_min').in('user_id', c).gte('date', dates[0]).lte('date', dates[dates.length - 1])),
